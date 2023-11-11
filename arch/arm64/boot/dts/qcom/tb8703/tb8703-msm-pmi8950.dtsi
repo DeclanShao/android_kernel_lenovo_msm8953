@@ -13,7 +13,7 @@
 &spmi_bus {
 
 	qcom,pmi8950@2 {
-		pmi8950_charger: qcom,qpnp-smbcharger {
+		qpnp_smbcharger: qcom,qpnp-smbcharger {
 			qcom,float-voltage-mv = <4350>;
 			qcom,thermal-mitigation = <1500 1100 900 700 0>;
 			/delete-property/ qcom,parallel-usb-min-current-ma;
@@ -22,7 +22,7 @@
 			qcom,override-usb-current;
 		};
 
-		pmi8950_fg: qcom,fg {
+		qcom_fg: qcom,fg {
 			qcom,resume-soc = <99>;
 			qcom,resume-soc-raw = <254>;
 			qcom,fg-delta-soc = <1>;

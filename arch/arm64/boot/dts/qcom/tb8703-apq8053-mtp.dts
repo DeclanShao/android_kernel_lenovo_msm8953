@@ -14,10 +14,9 @@
 /dts-v1/;
 
 #include "apq8053.dtsi"
-#include "msm8953.dtsi"
 #include "pmi8950.dtsi"
+#include "msm8953-mtp.dtsi"
 #include "msm8953-pmi8950.dtsi"
-#include "msm8953-camera-sensor-mtp.dtsi"
 
 / {
 	model = "Qualcomm Technologies, Inc. APQ8053 MTP";
@@ -25,5 +24,14 @@
 	qcom,board-id= <8 0>;
 };
 
+&soc {
+	qcom,rmnet-ipa {
+		status = "disabled";
+	};
+};
+
+&ipa_hw {
+	status = "disabled";
+};
+
 #include "tb8703/tb8703-overlay.dtsi"
-#include "tb8703/tb8703-apq8053.dtsi"
