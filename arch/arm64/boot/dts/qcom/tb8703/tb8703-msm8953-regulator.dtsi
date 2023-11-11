@@ -15,7 +15,7 @@
 &soc {
 
 	apc_cpr: cpr4-ctrl@b018000 {
-		/delete-property/qcom,cpr-enable;
+		/delete-property/ qcom,cpr-enable;
 	};
 
 };
