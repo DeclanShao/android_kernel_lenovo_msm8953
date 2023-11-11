@@ -123,6 +123,6 @@
 		label = "case_therm";
 	};
 
-	/delete-node/chan@13;
+	/delete-node/ chan@13;
 };
 
