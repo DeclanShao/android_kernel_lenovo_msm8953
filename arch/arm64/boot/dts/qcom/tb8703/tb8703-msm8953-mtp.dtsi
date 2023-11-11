@@ -28,8 +28,6 @@
                 /delete-node/ camera_focus;
                 /delete-node/ camera_snapshot;
         };
-
-        /delete-node/ hbtp;
 };
 
 &pmi_haptic{
@@ -41,7 +39,6 @@
 &mdss_dsi0 {
         /delete-property/ vdd-supply;
         qcom,dsi-pref-prim-pan = <&dsi_auont51021_1200p_vid>;
-        /delete-property/ qcom,platform-reset-gpio;
         qcom,platform-bklight-en-gpio = <&tlmm 46 0>;
 };
 
@@ -71,8 +68,6 @@
 
 /{
         mtp_batterydata: qcom,battery-data {
-                /delete-node/ qcom,ascent-3450mah;
-                /delete-node/ qcom,itech-3000mah;
                 #include "batterydata-SCUD-4250mAh.dtsi"
                 #include "batterydata-SCUD2-4250mAh.dtsi"
                 #include "batterydata-ATL-4250mAh.dtsi"
@@ -139,10 +134,6 @@
 		interrupts = <48 0x2>;
 		azopteq,irq-gpio =<&tlmm 48 0x2>;
 	};
-};
-
-&soc {
-	/delete-node/ hbtp;
 };
 
 &i2c_2 {

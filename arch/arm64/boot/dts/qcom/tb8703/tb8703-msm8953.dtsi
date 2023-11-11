@@ -101,7 +101,6 @@
 	};
 
 	qusb_phy: qusb@79000 {
-		USB3_GDSC-supply = <&gdsc_usb30>;
 
 		qcom,qusb-phy-init-seq = <0xF8 0x80
 					0x93 0x84	//0xb3->0x93
@@ -115,27 +114,9 @@
 					0x9F 0x1C
 					0x00 0x18>;
 
-		clocks = <&clock_gcc clk_bb_clk1>,
-			 <&clock_gcc clk_gcc_qusb_ref_clk>,
-			 <&clock_gcc clk_gcc_usb_phy_cfg_ahb_clk>,
-			 <&clock_gcc clk_gcc_qusb2_phy_reset>,
-			 <&clock_gcc clk_gcc_pcnoc_usb3_axi_clk>,
-			 <&clock_gcc clk_gcc_usb30_master_clk>;
-
-		clock-names = "ref_clk_src", "ref_clk", "cfg_ahb_clk",
-			      "phy_reset", "iface_clk", "core_clk";
-
 	};
 
 };
-
-
-/*
-&pm8953_mpps {
-	mpp@a100 {
-		qcom,ain-route = <3>; 
-	};
-};*/
 
 &pm8953_vadc {
 	chan@11 {
