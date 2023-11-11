@@ -25,4 +25,3 @@
 	qcom,pmic-id = <0x010016 0x010011 0x0 0x0>;
 };
 
-#include "tb8703/tb8703-overlay.dtsi"
