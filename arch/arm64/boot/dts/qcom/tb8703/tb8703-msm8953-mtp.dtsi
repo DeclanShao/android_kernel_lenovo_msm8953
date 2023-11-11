@@ -77,7 +77,7 @@
         };
 };
 
-&qcom_fg {
+&qpnp_fg {
         qcom,thermal-coefficients = [C5 86 BE 50 D1 37];
         qcom,fg-therm-delay-us = <3000>;
         qcom,cold-hot-jeita-hysteresis = <20 20>;

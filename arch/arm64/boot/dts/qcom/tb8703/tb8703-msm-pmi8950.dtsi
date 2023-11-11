@@ -22,7 +22,7 @@
 			qcom,override-usb-current;
 		};
 
-		qcom_fg: qcom,fg {
+		qpnp_fg: qcom,fg {
 			qcom,resume-soc = <99>;
 			qcom,resume-soc-raw = <254>;
 			qcom,fg-delta-soc = <1>;
