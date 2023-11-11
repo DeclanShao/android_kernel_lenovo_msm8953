@@ -39,8 +39,6 @@
 
 
 &mdss_dsi0 {
-        /delete-property/ lab-supply;
-        /delete-property/ ibb-supply;
         /delete-property/ vdd-supply;
         qcom,dsi-pref-prim-pan = <&dsi_auont51021_1200p_vid>;
         /delete-property/ qcom,platform-reset-gpio;

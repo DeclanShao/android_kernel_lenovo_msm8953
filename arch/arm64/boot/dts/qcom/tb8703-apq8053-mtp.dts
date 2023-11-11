@@ -34,3 +34,4 @@
 	status = "disabled";
 };
 
+#include "tb8703/tb8703-overlay.dtsi"
