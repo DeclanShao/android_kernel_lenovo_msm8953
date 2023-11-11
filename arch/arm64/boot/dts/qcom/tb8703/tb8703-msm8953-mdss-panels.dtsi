@@ -29,5 +29,12 @@
 		25 20 08 0a 06 03 04 a0];
 };
 
-
+&mdss_dsi0 {
+        /delete-property/ lab-supply;
+        /delete-property/ ibb-supply;
+        /delete-property/ vdd-supply;
+        /delete-property/ qcom,platform-reset-gpio;
+        qcom,dsi-pref-prim-pan = <&dsi_auont51021_1200p_vid>;
+        qcom,platform-bklight-en-gpio = <&tlmm 46 0>;
+};
 
