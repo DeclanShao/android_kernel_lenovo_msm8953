@@ -1,5 +1,5 @@
 #include "tb8703-msm8953-pinctrl.dtsi"
-#include "tb8703-msm8953.dtsi"
+//#include "tb8703-msm8953.dtsi"
 #include "tb8703-msm8953-regulator.dtsi"
 #include "tb8703-msm8953-audio.dtsi"
 //#include "tb8703-msm8953-camera-sensor-mtp.dtsi"
