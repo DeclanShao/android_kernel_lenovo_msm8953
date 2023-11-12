@@ -49,12 +49,11 @@
 			qcom,period = <1000000>;
 			qcom,lpg-dtest-line = <1>;
 			qcom,dtest-output = <1>;
-/*
+
 			qcom,pwm {
 				qcom,duty = <1000000>; //PWM duty time in microseconds
 				label = "pwm";
 			};
-*/
 		};
 
 		wled: qcom,leds@d800 {
@@ -68,7 +67,7 @@
 
 		};
 
-		pmi_haptic: qcom,haptic@c000 {
+		pmi_haptic: qcom,haptics@c000 {
 			qcom,vmax-mv = <2500>;
 		};
 	};
