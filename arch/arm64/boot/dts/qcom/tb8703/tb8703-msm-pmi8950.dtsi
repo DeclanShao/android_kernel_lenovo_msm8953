@@ -11,7 +11,7 @@
  */
 
 &spmi_bus {
-
+/*
 	qcom,pmi8950@2 {
 		qpnp_smbcharger: qcom,qpnp-smbcharger {
 			qcom,float-voltage-mv = <4350>;
@@ -43,7 +43,7 @@
 			/delete-property/ label;
 		};
 	};
-
+*/
 	qcom,pmi8950@3 {
 		pmi8950_pwm: pwm@b000 {
 			status = "okay";
