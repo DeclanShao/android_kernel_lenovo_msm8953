@@ -251,7 +251,7 @@ struct himax_ts_data {
 	struct i2c_client *client;
 	struct himax_i2c_platform_data *pdata;	
 	struct himax_virtual_key *button;
-	struct wake_lock ts_flash_wake_lock;
+	struct wakeup_source ts_flash_wake_lock;
 	
 #if defined(CONFIG_FB)
 	struct notifier_block fb_notif;
@@ -265,7 +265,7 @@ struct himax_ts_data {
 	struct delayed_work himax_chip_monitor;
 #endif
 #if defined(CONFIG_TOUCHSCREEN_PROXIMITY)
-	struct wake_lock ts_wake_lock;
+	struct wakeup_source ts_wake_lock;
 #endif
 #ifdef HX_TP_PROC_FLASH_DUMP
 	struct workqueue_struct 			*flash_wq;
@@ -277,7 +277,7 @@ struct himax_ts_data {
 
 #ifdef HX_SMART_WAKEUP
 	uint8_t SMWP_enable;
-	struct wake_lock ts_SMWP_wake_lock;
+	struct wakeup_source ts_SMWP_wake_lock;
 	uint8_t gesture_cust_en[16];
 #endif
 
