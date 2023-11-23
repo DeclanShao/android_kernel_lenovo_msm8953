@@ -446,7 +446,12 @@ module_param_named(
 	debug_mask, smbchg_debug_mask, int, 00600
 );
 
+#ifdef CONFIG_MACH_LENOVO_TB8703
+static int smbchg_parallel_en = 0;
+#else
 static int smbchg_parallel_en = 1;
+#endif
+
 module_param_named(
 	parallel_en, smbchg_parallel_en, int, 00600
 );
@@ -1110,6 +1115,11 @@ static int get_prop_batt_temp(struct smbchg_chip *chip)
 		pr_smb(PR_STATUS, "Couldn't get temperature rc = %d\n", rc);
 		temp = DEFAULT_BATT_TEMP;
 	}
+
+#ifdef CONFIG_MACH_LENOVO_TB8703
+	if (temp < -15)
+		temp -= 30;
+#endif
 	return temp;
 }
 
@@ -3971,7 +3981,11 @@ static int smbchg_external_otg_regulator_disable(struct regulator_dev *rdev)
 	 * value in order to allow normal USBs to be recognized as a valid
 	 * input.
 	 */
+#ifdef CONFIG_MACH_LENOVO_TB8703
+	rc = vote(chip->hvdcp_enable_votable, HVDCP_OTG_VOTER, true, 0);
+#else
 	rc = vote(chip->hvdcp_enable_votable, HVDCP_OTG_VOTER, false, 1);
+#endif
 	if (rc < 0) {
 		dev_err(chip->dev, "Couldn't enable HVDCP rc=%d\n", rc);
 		return rc;
@@ -4727,7 +4741,11 @@ static void restore_from_hvdcp_detection(struct smbchg_chip *chip)
 		pr_err("Couldn't configure HVDCP 9V rc=%d\n", rc);
 
 	/* enable HVDCP */
+#ifdef CONFIG_MACH_LENOVO_TB8703
+	rc = vote(chip->hvdcp_enable_votable, HVDCP_PULSING_VOTER, true, 0);
+#else
 	rc = vote(chip->hvdcp_enable_votable, HVDCP_PULSING_VOTER, false, 1);
+#endif
 	if (rc < 0)
 		pr_err("Couldn't enable HVDCP rc=%d\n", rc);
 
@@ -4741,7 +4759,11 @@ static void restore_from_hvdcp_detection(struct smbchg_chip *chip)
 	/* Reset back to 5V unregulated */
 	rc = smbchg_sec_masked_write(chip,
 		chip->usb_chgpth_base + USBIN_CHGR_CFG,
+#ifdef CONFIG_MACH_LENOVO_TB8703
+			ADAPTER_ALLOWANCE_MASK, 0x0);
+#else
 		ADAPTER_ALLOWANCE_MASK, USBIN_ADAPTER_5V_UNREGULATED_9V);
+#endif
 	if (rc < 0)
 		pr_err("Couldn't write usb allowance rc=%d\n", rc);
 
@@ -5222,12 +5244,20 @@ static int fake_insertion_removal(struct smbchg_chip *chip, bool insertion)
 	}
 
 	pr_smb(PR_MISC, "Allow only %s charger\n",
+#ifdef CONFIG_MACH_LENOVO_TB8703
+			insertion ? "5V" : "9V only");//modify by guodandan 2015-10-29
+#else
 			insertion ? "5-9V" : "9V only");
+#endif
 	rc = smbchg_sec_masked_write(chip,
 			chip->usb_chgpth_base + USBIN_CHGR_CFG,
 			ADAPTER_ALLOWANCE_MASK,
 			insertion ?
+#ifdef CONFIG_MACH_LENOVO_TB8703
+			0x0/*USBIN_ADAPTER_5V_9V_CONT*/ : USBIN_ADAPTER_9V);//modify by guodandan 2015-10-29
+#else
 			USBIN_ADAPTER_5V_9V_CONT : USBIN_ADAPTER_9V);
+#endif
 	if (rc < 0) {
 		pr_err("Couldn't write usb allowance rc=%d\n", rc);
 		return rc;
@@ -5412,7 +5442,11 @@ static int smbchg_unprepare_for_pulsing(struct smbchg_chip *chip)
 
 	/* enable HVDCP */
 	pr_smb(PR_MISC, "Enable HVDCP\n");
+#ifdef CONFIG_MACH_LENOVO_TB8703
+	rc = vote(chip->hvdcp_enable_votable, HVDCP_PULSING_VOTER, true, 0);
+#else
 	rc = vote(chip->hvdcp_enable_votable, HVDCP_PULSING_VOTER, false, 1);
+#endif
 	if (rc < 0) {
 		pr_err("Couldn't enable HVDCP rc=%d\n", rc);
 		return rc;
@@ -7569,6 +7603,23 @@ static int smbchg_hw_init(struct smbchg_chip *chip)
 		}
 	}
 
+#ifdef CONFIG_MACH_LENOVO_TB8703
+	/*modify by guodandan 2015-10-29 begin*/
+	/* allow 5V only chargers */
+	rc = smbchg_sec_masked_write(chip,
+			chip->usb_chgpth_base + USBIN_CHGR_CFG,
+			ADAPTER_ALLOWANCE_MASK, 0x0);
+	if (rc < 0)
+		pr_err("Couldn't write usb allowance rc=%d\n", rc);
+
+	rc = smbchg_sec_masked_write(chip,
+				chip->usb_chgpth_base + CHGPTH_CFG,
+				HVDCP_EN_BIT, 0);
+	if (rc < 0)
+		dev_err(chip->dev, "Couldn't disable HVDCP rc=%d\n", rc);
+	/*modify by guodandan 2015-10-29 end*/
+#endif
+
 	if (chip->wa_flags & SMBCHG_BATT_OV_WA)
 		batt_ov_wa_check(chip);
 
@@ -8323,7 +8374,9 @@ static int smbchg_check_chg_version(struct smbchg_chip *chip)
 		chip->schg_version = QPNP_SCHG;
 		break;
 	case PMI8950:
+#ifndef CONFIG_MACH_LENOVO_TB8703
 		chip->wa_flags |= SMBCHG_RESTART_WA;
+#endif
 	case PMI8937:
 	/* fall through */
 	case PMI8940:
@@ -8723,8 +8776,11 @@ static int smbchg_probe(struct platform_device *pdev)
 			goto out;
 		}
 	}
+#ifdef CONFIG_MACH_LENOVO_TB8703
+	chip->allow_hvdcp3_detection = false;
+#else
 	chip->allow_hvdcp3_detection = true;
-
+#endif
 	if (chip->cfg_chg_led_support &&
 			chip->schg_version == QPNP_SCHG_LITE) {
 		rc = smbchg_register_chg_led(chip);

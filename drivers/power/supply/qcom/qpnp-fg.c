@@ -2255,10 +2255,30 @@ static int get_prop_capacity(struct fg_chip *chip)
 				FULL_SOC_RAW - 2) + 1;
 	}
 
+#ifdef CONFIG_MACH_LENOVO_TB8703
+	if (chip->battery_missing){
+		msoc = get_monotonic_soc_raw(chip);
+		return DIV_ROUND_CLOSEST((msoc - 1) * (FULL_CAPACITY - 2),
+			FULL_SOC_RAW - 2) + 1;
+	}
+
+	if (!chip->profile_loaded && !chip->use_otp_profile){
+		msoc = get_monotonic_soc_raw(chip);
+		if (msoc == FULL_SOC_RAW) {
+			return FULL_CAPACITY;
+		}else if(msoc == 0){
+			return EMPTY_CAPACITY;
+		}
+		return DIV_ROUND_CLOSEST((msoc - 1) * (FULL_CAPACITY - 2),
+			FULL_SOC_RAW - 2) + 1;
+	}
+#else
 	if (chip->battery_missing)
 		return MISSING_CAPACITY;
 	if (!chip->profile_loaded && !chip->use_otp_profile)
 		return DEFAULT_CAPACITY;
+
+#endif
 	if (chip->charge_full)
 		return FULL_CAPACITY;
 	if (chip->soc_empty) {
