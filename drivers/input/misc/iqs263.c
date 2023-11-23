@@ -734,6 +734,7 @@ static int iqs263_remove(struct i2c_client *client)
 
 /*====================================================*/
 /***** Kernel Suspend *****/
+#if defined(USE_KERNEL_SUSPEND)
 static int iqs263_suspend(struct i2c_client *client, pm_message_t mesg)
 {
 	struct iqs263_chip *iqs263_chip = i2c_get_clientdata(client);
@@ -753,7 +754,7 @@ static int iqs263_resume(struct i2c_client *client)
 	pr_info("%s\n", __func__);
 	return 0;
 }
-
+#endif
 /*====================================================*/
 static struct i2c_device_id iqs263_idtable[] = {
 	{ DRIVER_NAME, 0 },
@@ -775,10 +776,10 @@ static struct i2c_driver iqs263_driver = {
 	.id_table = iqs263_idtable,
 	.probe	  = iqs263_probe,
 	.remove	  = iqs263_remove,
-//#if defined(USE_KERNEL_SUSPEND)
+#if defined(USE_KERNEL_SUSPEND)
 	.suspend  = iqs263_suspend,
 	.resume   = iqs263_resume,
-//#endif
+#endif
 };
 
 static int __init iqs263_init(void)
