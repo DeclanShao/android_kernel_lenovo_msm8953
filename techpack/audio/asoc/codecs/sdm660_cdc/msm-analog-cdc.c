@@ -2057,7 +2057,7 @@ static const struct snd_kcontrol_new msm_anlg_cdc_snd_controls[] = {
 
 #ifdef CONFIG_MACH_LENOVO_TB8703
 	SOC_SINGLE("MICBIAS CAPLESS Switch",
-			 MSM89XX_WCD_A_ANALOG_MICB_1_EN, 6, 1, 0),
+			 MSM89XX_PMIC_ANALOG_MICB_1_EN, 6, 1, 0),
 #endif
 
 	SOC_SINGLE_TLV("ADC1 Volume", MSM89XX_PMIC_ANALOG_TX_1_EN, 3,
