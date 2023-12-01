@@ -409,6 +409,7 @@ bool wcd_swch_level_remove(struct wcd_mbhc *mbhc)
 }
 EXPORT_SYMBOL(wcd_swch_level_remove);
 
+#ifndef CONFIG_MACH_LENOVO_TB8703
 static void wcd_mbhc_clr_and_turnon_hph_padac(struct wcd_mbhc *mbhc)
 {
 	bool pa_turned_on = false;
@@ -461,6 +462,7 @@ static void wcd_mbhc_clr_and_turnon_hph_padac(struct wcd_mbhc *mbhc)
 	}
 
 }
+#endif
 
 static bool wcd_mbhc_is_hph_pa_on(struct wcd_mbhc *mbhc)
 {
@@ -471,6 +473,7 @@ static bool wcd_mbhc_is_hph_pa_on(struct wcd_mbhc *mbhc)
 	return (hph_pa_on) ? true : false;
 }
 
+#ifndef CONFIG_MACH_LENOVO_TB8703
 static void wcd_mbhc_set_and_turnoff_hph_padac(struct wcd_mbhc *mbhc)
 {
 	u8 wg_time = 0;
@@ -507,6 +510,7 @@ static void wcd_mbhc_set_and_turnoff_hph_padac(struct wcd_mbhc *mbhc)
 		}
 	}
 }
+#endif
 
 int wcd_mbhc_get_impedance(struct wcd_mbhc *mbhc, uint32_t *zl,
 			uint32_t *zr)
@@ -601,7 +605,9 @@ void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 			 jack_type, mbhc->hph_status);
 		wcd_mbhc_jack_report(mbhc, &mbhc->headset_jack,
 				mbhc->hph_status, WCD_MBHC_JACK_MASK);
+#ifndef CONFIG_MACH_LENOVO_TB8703
 		wcd_mbhc_set_and_turnoff_hph_padac(mbhc);
+#endif
 		hphrocp_off_report(mbhc, SND_JACK_OC_HPHR);
 		hphlocp_off_report(mbhc, SND_JACK_OC_HPHL);
 		mbhc->current_plug = MBHC_PLUG_TYPE_NONE;
@@ -700,7 +706,11 @@ void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 				(mbhc->zr > mbhc->mbhc_cfg->linein_th &&
 				 mbhc->zr < MAX_IMPED) &&
 				(jack_type == SND_JACK_HEADPHONE)) {
+#ifdef CONFIG_MACH_LENOVO_TB8703
+				jack_type = SND_JACK_HEADSET;
+#else
 				jack_type = SND_JACK_LINEOUT;
+#endif
 				mbhc->force_linein = true;
 				mbhc->current_plug = MBHC_PLUG_TYPE_HIGH_HPH;
 				if (mbhc->hph_status) {
@@ -724,8 +734,9 @@ void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 		wcd_mbhc_jack_report(mbhc, &mbhc->headset_jack,
 				    (mbhc->hph_status | SND_JACK_MECHANICAL),
 				    WCD_MBHC_JACK_MASK);
+#ifndef CONFIG_MACH_LENOVO_TB8703
 		wcd_mbhc_clr_and_turnon_hph_padac(mbhc);
-
+#endif
 	}
 	pr_debug("%s: leave hph_status %x\n", __func__, mbhc->hph_status);
 }
@@ -744,14 +755,21 @@ void wcd_mbhc_elec_hs_report_unplug(struct wcd_mbhc *mbhc)
 		pr_info("%s: hs_detect_plug work not cancelled\n", __func__);
 
 	pr_debug("%s: Report extension cable\n", __func__);
+
+#ifdef CONFIG_MACH_LENOVO_TB8703
+	wcd_mbhc_report_plug(mbhc, 1, SND_JACK_HEADSET);
+#else
 	wcd_mbhc_report_plug(mbhc, 1, SND_JACK_LINEOUT);
+#endif
 	/*
 	 * If PA is enabled HPHL schmitt trigger can
 	 * be unreliable, make sure to disable it
 	 */
+#ifndef CONFIG_MACH_LENOVO_TB8703
 	if (test_bit(WCD_MBHC_EVENT_PA_HPHL,
 		&mbhc->event_state))
 		wcd_mbhc_set_and_turnoff_hph_padac(mbhc);
+#endif
 	/*
 	 * Disable HPHL trigger and MIC Schmitt triggers.
 	 * Setup for insertion detection.
@@ -815,7 +833,11 @@ void wcd_mbhc_find_plug_and_report(struct wcd_mbhc *mbhc,
 	} else if (plug_type == MBHC_PLUG_TYPE_HIGH_HPH) {
 		if (mbhc->mbhc_cfg->detect_extn_cable) {
 			/* High impedance device found. Report as LINEOUT */
+#ifdef CONFIG_MACH_LENOVO_TB8703
+			wcd_mbhc_report_plug(mbhc, 1, SND_JACK_HEADSET);
+#else
 			wcd_mbhc_report_plug(mbhc, 1, SND_JACK_LINEOUT);
+#endif
 			pr_debug("%s: setup mic trigger for further detection\n",
 				 __func__);
 
@@ -834,7 +856,11 @@ void wcd_mbhc_find_plug_and_report(struct wcd_mbhc *mbhc,
 			wcd_mbhc_hs_elec_irq(mbhc, WCD_MBHC_ELEC_HS_INS,
 					     true);
 		} else {
+#ifdef CONFIG_MACH_LENOVO_TB8703
+			wcd_mbhc_report_plug(mbhc, 1, SND_JACK_HEADSET);
+#else
 			wcd_mbhc_report_plug(mbhc, 1, SND_JACK_LINEOUT);
+#endif
 		}
 	} else {
 		WARN(1, "Unexpected current plug_type %d, plug_type %d\n",
@@ -943,7 +969,11 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 			if (mbhc->mbhc_detection_logic == WCD_DETECTION_ADC)
 			    WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_ELECT_ISRC_EN, 0);
 			mbhc->is_extn_cable = false;
+#ifdef CONFIG_MACH_LENOVO_TB8703
+			jack_type = SND_JACK_ANC_HEADPHONE;
+#else
 			jack_type = SND_JACK_LINEOUT;
+#endif
 			break;
 		case MBHC_PLUG_TYPE_ANC_HEADPHONE:
 			jack_type = SND_JACK_ANC_HEADPHONE;
