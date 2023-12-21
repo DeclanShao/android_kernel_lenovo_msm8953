@@ -102,7 +102,7 @@
 //#define HX_LOADIN_CONFIG
 #define HX_AUTO_UPDATE_FW
 //#define HX_AUTO_UPDATE_CONFIG		//if enable HX_AUTO_UPDATE_CONFIG, need to disable HX_LOADIN_CONFIG
-//#define HX_SMART_WAKEUP
+#define HX_SMART_WAKEUP                1
 #define GLOVE
 //#define HX_PALM_REPORT
 #define HX_ESD_WORKAROUND
