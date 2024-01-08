@@ -28,11 +28,23 @@
                 /delete-node/ camera_focus;
                 /delete-node/ camera_snapshot;
         };
+
+        /delete-node/ hbtp;
 };
 
 &pmi_haptic{
         status = "okay";
         qcom,actuator-type = "erm";
+};
+
+
+&mdss_dsi0 {
+        /delete-property/ lab-supply;
+        /delete-property/ ibb-supply;
+        /delete-property/ vdd-supply;
+        qcom,dsi-pref-prim-pan = <&dsi_auont51021_1200p_vid>;
+        /delete-property/ qcom,platform-reset-gpio;
+        qcom,platform-bklight-en-gpio = <&tlmm 46 0>;
 };
 
 &spmi_bus {
@@ -80,6 +92,8 @@
         qcom,float-voltage-comp = <0>;
         qcom,chg-led-sw-controls;
         qcom,chg-led-support;
+        /delete-property/ qcom,force-aicl-rerun;
+        /delete-property/ qcom,aicl-rerun-period-s;
         /delete-property/ qcom,external-typec;
         /delete-property/ qcom,typec-psy-name;
 };
@@ -87,8 +101,7 @@
 
 &i2c_3 {
 	status = "ok";
-	
-        himax-ts@48 {
+		himax-ts@48 {
 		compatible = "himax,852xf";
 		reg = <0x48>;
 		pinctrl-names = "pmx_ts_active","pmx_ts_suspend",
@@ -128,7 +141,10 @@
 	};
 };
 
+&soc {
+	/delete-node/ hbtp;
+};
+
 &i2c_2 {
 	status = "disabled";
 };
-
