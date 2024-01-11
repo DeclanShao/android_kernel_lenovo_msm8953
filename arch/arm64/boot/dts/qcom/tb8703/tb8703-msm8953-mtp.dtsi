@@ -34,7 +34,7 @@
 
 &pmi_haptic{
         status = "okay";
-        qcom,actuator-type = "erm";
+        qcom,actuator-type = <1>;
 };
 
 
