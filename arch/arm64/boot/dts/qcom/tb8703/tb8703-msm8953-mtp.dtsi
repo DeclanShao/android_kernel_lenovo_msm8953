@@ -33,8 +33,11 @@
 };
 
 &pmi_haptic{
+        /delete-property/ qcom,lra-auto-res-mode;
+        /delete-property/ qcom,lra-high-z;
+        /delete-property/ qcom,lra-res-cal-period;
         status = "okay";
-        qcom,actuator-type = <1>;
+        qcom,actuator-type = "erm";
 };
 
 
