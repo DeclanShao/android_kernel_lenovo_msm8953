@@ -69,7 +69,7 @@
 
 		pmi_haptic: qcom,haptics@c000 {
 			qcom,vmax-mv = <2500>;
-                        qcom,wave-play-rate-us = <5263>;
+                        qcom,play-rate-us = <5263>;
 	                wf_0 { qcom,wf-vmax-mv = <2500>; };
 	                wf_1 { qcom,wf-vmax-mv = <2500>; };
 	                wf_2 { qcom,wf-vmax-mv = <2500>; };
