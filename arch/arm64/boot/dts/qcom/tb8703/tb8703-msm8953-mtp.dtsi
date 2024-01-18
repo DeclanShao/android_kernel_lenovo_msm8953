@@ -33,9 +33,6 @@
 };
 
 &pmi_haptic{
-        qcom,actuator-type = "lra";
-	qcom,lra-auto-resonance-mode = "qwd";
-	qcom,lra-resonance-sig-shape = "sine";
         status = "okay";
 };
 
