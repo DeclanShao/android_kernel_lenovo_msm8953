@@ -16,6 +16,9 @@ obj-$(CONFIG_MSMB_CAMERA) += camera_v2/
 else
 obj-$(CONFIG_MSMB_CAMERA) += camera_v2-legacy/
 endif
+ifeq ($(CONFIG_MACH_LENOVO_TB8703),y)
+obj-$(CONFIG_MSMB_CAMERA) += camera_v2-land/
+endif
 obj-y += broadcast/
 obj-$(CONFIG_DVB_MPQ) += dvb/
 obj-$(CONFIG_QCA402X) += qca402/

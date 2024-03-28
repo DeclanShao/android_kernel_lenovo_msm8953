@@ -1,9 +1,9 @@
-ccflags-y += -Idrivers/media/platform/msm/camera_v2
-ccflags-y += -Idrivers/media/platform/msm/camera_v2/common
-ccflags-y += -Idrivers/media/platform/msm/camera_v2/msm_vb2
-ccflags-y += -Idrivers/media/platform/msm/camera_v2/camera
-ccflags-y += -Idrivers/media/platform/msm/camera_v2/sensor/io
-ccflags-y += -Idrivers/media/platform/msm/camera_v2/sensor/cci
+ccflags-y += -Idrivers/media/platform/msm/camera_v2-tb8703
+ccflags-y += -Idrivers/media/platform/msm/camera_v2-tb8703/common
+ccflags-y += -Idrivers/media/platform/msm/camera_v2-tb8703/msm_vb2
+ccflags-y += -Idrivers/media/platform/msm/camera_v2-tb8703/camera
+ccflags-y += -Idrivers/media/platform/msm/camera_v2-tb8703/sensor/io
+ccflags-y += -Idrivers/media/platform/msm/camera_v2-tb8703/sensor/cci
 ifeq ($(CONFIG_MACH_LENOVO_TB8703),y)
 obj-$(CONFIG_MSMB_CAMERA) += cci/ io/ csiphy/ csid/ actuator/ eeprom/ ois/ flash/
 else
