@@ -2958,7 +2958,7 @@ bypass_checksum_failed_packet:
 						touch_report_psensor_input_event(0);
 						proximity_flag = 1;
 					}
-				__pm_wakeup_event(&ts->ts_wake_lock, TS_WAKE_LOCK_TIMEOUT);
+				__pm_wakeup_event(ts->ts_wake_lock, TS_WAKE_LOCK_TIMEOUT);
 				return;
 			}
 		}
@@ -3126,7 +3126,7 @@ bypass_checksum_failed_packet:
 					I(" %s far event trigger\n",__func__);
 					touch_report_psensor_input_event(1);
 					proximity_flag = 0;	//clear flag , avoid touch point cant leave.
-					__pm_wakeup_event(&ts->ts_wake_lock, TS_WAKE_LOCK_TIMEOUT);
+					__pm_wakeup_event(ts->ts_wake_lock, TS_WAKE_LOCK_TIMEOUT);
 				}
 			else if(AA_press)
 #else
@@ -3246,7 +3246,7 @@ static irqreturn_t himax_ts_thread(int irq, void *ptr)
 #ifdef HX_SMART_WAKEUP
 	if (atomic_read(&ts->suspend_mode)&&(!FAKE_POWER_KEY_SEND)&&(ts->SMWP_enable)) {
 		I("Start to parse wake event\n");
-		__pm_wakeup_event(&ts->ts_SMWP_wake_lock, TS_WAKE_LOCK_TIMEOUT);
+		__pm_wakeup_event(ts->ts_SMWP_wake_lock, TS_WAKE_LOCK_TIMEOUT);
 		msleep(200);
 		ret_event = himax_parse_wake_event((struct himax_ts_data *)ptr);
 		switch (ret_event) {
@@ -3419,7 +3419,7 @@ static int touch_event_handler(void *ptr)
 #ifdef HX_SMART_WAKEUP
 	if (atomic_read(&private_ts->suspend_mode)&&(!FAKE_POWER_KEY_SEND)&&(private_ts->SMWP_enable)) {
 		I("Start to parse wake event\n");
-		__pm_wakeup_event(&private_ts->ts_SMWP_wake_lock, TS_WAKE_LOCK_TIMEOUT);
+		__pm_wakeup_event(private_ts->ts_SMWP_wake_lock, TS_WAKE_LOCK_TIMEOUT);
 		msleep(200);
 		ret_event = himax_parse_wake_event(private_ts);
 		switch (ret_event) {
@@ -7049,13 +7049,13 @@ static int himax852xf_probe(struct i2c_client *client, const struct i2c_device_i
 
 #if defined(CONFIG_TOUCHSCREEN_PROXIMITY)
 	if(pdata->proximity_bytp_enable)
-	wakeup_source_init(&ts->ts_wake_lock, HIMAX852xf_NAME);
+	ts->ts_wake_lock = wakeup_source_register(NULL, HIMAX852xf_NAME);
 #endif
 #ifdef HX_SMART_WAKEUP
 	ts->SMWP_enable=0;
-	wakeup_source_init(&ts->ts_SMWP_wake_lock, HIMAX852xf_NAME);
+	ts->ts_SMWP_wake_lock = wakeup_source_register(NULL, HIMAX852xf_NAME);
 #endif
-wakeup_source_init(&ts->ts_flash_wake_lock, HIMAX852xf_NAME);
+    ts->ts_flash_wake_lock = wakeup_source_register(NULL, HIMAX852xf_NAME);
 
 #if defined(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_DEBUG)
 	himax_touch_proc_init();
@@ -7093,13 +7093,13 @@ if (!ts->use_irq){
 #if defined(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_DEBUG)
 	himax_touch_proc_deinit();
 #endif
-wakeup_source_trash(&ts->ts_flash_wake_lock);
+wakeup_source_unregister(ts->ts_flash_wake_lock);
 #ifdef HX_SMART_WAKEUP
-	wakeup_source_trash(&ts->ts_SMWP_wake_lock);
+	wakeup_source_unregister(ts->ts_SMWP_wake_lock);
 #endif
 #if defined(CONFIG_TOUCHSCREEN_PROXIMITY)
 	if(pdata->proximity_bytp_enable)
-		wakeup_source_trash(&ts->ts_wake_lock);
+		wakeup_source_unregister(ts->ts_wake_lock);
 #endif
 #ifdef  HX_CHIP_STATUS_MONITOR
 	cancel_delayed_work_sync(&ts->himax_chip_monitor);
@@ -7177,11 +7177,11 @@ static int himax852xf_remove(struct i2c_client *client)
 	himax_touch_proc_deinit();
 #endif
 #ifdef HX_SMART_WAKEUP
-		wakeup_source_trash(&ts->ts_SMWP_wake_lock);
+		wakeup_source_unregister(ts->ts_SMWP_wake_lock);
 #endif
 #if defined(CONFIG_TOUCHSCREEN_PROXIMITY)
 		if(pdata->proximity_bytp_enable)
-			wakeup_source_trash(&ts->ts_wake_lock);
+			wakeup_source_unregister(ts->ts_wake_lock);
 #endif
 
 
