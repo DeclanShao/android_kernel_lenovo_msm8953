@@ -468,4 +468,15 @@ config ARCH_ZYNQMP
 	help
 	  This enables support for Xilinx ZynqMP Family
 
+config MACH_LENOVO_MSM8953
+	bool
+	select ARCH_QCOM
+	select ARCH_MSM8953
+
+config MACH_LENOVO_TB8703
+	bool "TB8703 board"
+	select MACH_LENOVO_MSM8953
+	help
+	  This enables support for Lenovo P8.
+
 endmenu
