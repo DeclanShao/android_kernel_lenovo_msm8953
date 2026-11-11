@@ -7194,6 +7194,8 @@ static int himax852xf_remove(struct i2c_client *client)
 #if defined(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_DEBUG)
 	himax_touch_proc_deinit();
 #endif
+wakeup_source_unregister(ts->ts_flash_wake_lock);
+ts->ts_flash_wake_lock = NULL;
 #ifdef HX_SMART_WAKEUP
 		wakeup_source_unregister(ts->ts_SMWP_wake_lock);
 		ts->ts_SMWP_wake_lock = NULL;
