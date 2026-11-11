@@ -1,0 +1,4 @@
+config MACH_LENOVO_MSM8953
+	bool "Support for Lenovo MSM8953 platform"
+	help
+	  Say Y here to enable support for Lenovo MSM8953 platform.

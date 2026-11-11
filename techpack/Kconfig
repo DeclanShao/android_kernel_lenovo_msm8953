@@ -1,2 +1,2 @@
 source "techpack/camera-legacy-n/Kconfig"
-
+source "techpack/lenovo-msm8953/Kconfig"
