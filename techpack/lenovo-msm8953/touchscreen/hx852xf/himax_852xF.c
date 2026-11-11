@@ -4644,7 +4644,7 @@ static ssize_t himax_debug_write(struct file *file, const char *buff,
 	{
 
 		himax_int_enable(private_ts->client->irq,0);
-		__pm_stay_awake(&private_ts->ts_flash_wake_lock);
+		__pm_stay_awake(private_ts->ts_flash_wake_lock);
 #ifdef HX_CHIP_STATUS_MONITOR
 		HX_CHIP_POLLING_COUNT = 0;
 		cancel_delayed_work_sync(&private_ts->himax_chip_monitor);
@@ -4710,7 +4710,7 @@ static ssize_t himax_debug_write(struct file *file, const char *buff,
 #ifdef HX_RST_PIN_FUNC
 	himax_HW_reset(true,false);
 #endif
-	__pm_relax(&private_ts->ts_flash_wake_lock);
+	__pm_relax(private_ts->ts_flash_wake_lock);
 	himax_int_enable(private_ts->client->irq,1);
 #ifdef HX_CHIP_STATUS_MONITOR
 	HX_CHIP_POLLING_COUNT = 0;
