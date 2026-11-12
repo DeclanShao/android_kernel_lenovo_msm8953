@@ -1024,6 +1024,7 @@ static int himax_config_reg_write(struct i2c_client *client, uint8_t StartAddr, 
 void himax_touch_information(void)
 {
 	char data[12] = {0};
+	int panel_id = READ_ONCE(panel_id_ret);
 	
 	I("%s:IC_TYPE =%d\n", __func__,IC_TYPE);
 	
@@ -1220,10 +1221,10 @@ void himax_touch_information(void)
 			i2c_himax_master_write(private_ts->client, &data[0],2,DEFAULT_RETRY_CNT);
 			msleep(10);
 			I("%s:HX_RX_NUM =%d,HX_TX_NUM =%d,HX_MAX_PT=%d \n", __func__,HX_RX_NUM,HX_TX_NUM,HX_MAX_PT);
-if(panel_id_ret == 0){
+if (panel_id == 0) {
 			HX_RX_NUM				= 38;
 			HX_TX_NUM				= 24;
-}else if(panel_id_ret == 1)
+} else if (panel_id == 1)
 {
 			HX_RX_NUM				= 40;
 			HX_TX_NUM				= 25;
@@ -1339,10 +1340,17 @@ static void himax_power_on_initCMD(struct i2c_client *client)
 #ifdef HX_AUTO_UPDATE_FW
 static int i_update_FW(void)
 {
+	int panel_id = READ_ONCE(panel_id_ret);
 	unsigned char* ImageBuffer = i_CTPM_FW;
 	unsigned char* ImageBuffer_2 = i_CTPM_FW_2;
 	int fullFileLength = sizeof(i_CTPM_FW); 
 	int fullFileLength_2 = sizeof(i_CTPM_FW_2); 
+	if (panel_id != 0 && panel_id != 1) {
+		E("%s: unknown panel id %d; skip firmware update\\n",
+			__func__, panel_id);
+		return 0;
+	}
+
 	//I("IMAGE FW_VER=%x,%x.\n",i_CTPM_FW[FW_VER_MAJ_FLASH_ADDR],i_CTPM_FW[FW_VER_MIN_FLASH_ADDR]);
 	//I("IMAGE CFG_VER=%x.\n",i_CTPM_FW[FW_CFG_VER_FLASH_ADDR]);
 	//I("IMAGE FW_VER=%x,%x.\n",i_CTPM_FW_2[FW_VER_MAJ_FLASH_ADDR],i_CTPM_FW_2[FW_VER_MIN_FLASH_ADDR]);
@@ -1356,7 +1364,7 @@ static int i_update_FW(void)
 
 	i2c_himax_write_command(i2c_client_point, 0x80, DEFAULT_RETRY_CNT);
 	msleep(50);
-	if (1 == panel_id_ret)
+	if (panel_id == 1)
 	{
 		if(( private_ts->vendor_fw_ver_H < i_CTPM_FW_2[FW_VER_MAJ_FLASH_ADDR] )
 			|| ( private_ts->vendor_fw_ver_L < i_CTPM_FW_2[FW_VER_MIN_FLASH_ADDR] )
@@ -1388,7 +1396,7 @@ static int i_update_FW(void)
 			return 0;
 		}
 
-	}else if(panel_id_ret == 0){
+	} else if (panel_id == 0) {
 		if(( private_ts->vendor_fw_ver_H < i_CTPM_FW[FW_VER_MAJ_FLASH_ADDR] )
 			|| ( private_ts->vendor_fw_ver_L < i_CTPM_FW[FW_VER_MIN_FLASH_ADDR] )
 			|| ( private_ts->vendor_config_ver < i_CTPM_FW[FW_CFG_VER_FLASH_ADDR])
