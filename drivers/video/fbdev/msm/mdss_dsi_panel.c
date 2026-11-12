@@ -441,8 +441,8 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 		pr_debug("%s:%d, reset line not configured\n",
 			   __func__, __LINE__);
 		return rc;
-#endif
 	}
+#endif
 
 	pr_debug("%s: enable = %d\n", __func__, enable);
 
