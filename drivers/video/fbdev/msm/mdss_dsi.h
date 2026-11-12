@@ -1,3 +1,4 @@
+#include <linux/kconfig.h>
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2012-2021, The Linux Foundation. All rights reserved. */
 
@@ -447,6 +448,10 @@ struct mdss_dsi_ctrl_pdata {
 	int rst_gpio;
 	int disp_en_gpio;
 	int bklt_en_gpio;
+	#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	int lcden_gpio;
+	bool lcden_gpio_requested;
+	#endif
 	bool bklt_en_gpio_invert;
 	bool bklt_en_gpio_state;
 	int avdd_en_gpio;
