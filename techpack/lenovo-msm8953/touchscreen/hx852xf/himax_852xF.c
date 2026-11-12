@@ -952,7 +952,13 @@ static int himax_input_register(struct himax_ts_data *ts)
 		0, 3, 0, 0);
 	} else {/* PROTOCOL_TYPE_B */
 		set_bit(MT_TOOL_FINGER, ts->input_dev->keybit);
-		input_mt_init_slots(ts->input_dev, ts->nFinger_support, 0);
+		ret = input_mt_init_slots(ts->input_dev,
+					  ts->nFinger_support, 0);
+		if (ret) {
+			E("%s: input_mt_init_slots failed: %d\n",
+			  __func__, ret);
+			return ret;
+		}
 	}
 
 	I("input_set_abs_params: min_x %d, max_x %d, min_y %d, max_y %d\n",
@@ -6760,59 +6766,54 @@ static int himax_parse_dt(struct himax_ts_data *ts,
 
 static int himax_pinctrl_init(struct himax_i2c_platform_data *pdata)
 {
+	struct device *dev = &i2c_client_point->dev;
 	int retval;
-	
-	/* Get pinctrl if target uses pinctrl */
-	pdata->ts_pinctrl = devm_pinctrl_get(&(i2c_client_point->dev));
-	if (IS_ERR_OR_NULL(pdata->ts_pinctrl)) {
-		retval = PTR_ERR(pdata->ts_pinctrl);
-		dev_dbg(&i2c_client_point->dev,
-			"Target does not use pinctrl %d\n", retval);
-		goto err_pinctrl_get;
-	}
-	
-	pdata->pinctrl_state_active
-		= pinctrl_lookup_state(pdata->ts_pinctrl,
-				PINCTRL_STATE_ACTIVE);
-	if (IS_ERR_OR_NULL(pdata->pinctrl_state_active)) {
-		retval = PTR_ERR(pdata->pinctrl_state_active);
-		dev_err(&(i2c_client_point->dev),
-			"Can not lookup %s pinstate %d\n",
-			PINCTRL_STATE_ACTIVE, retval);
-		goto err_pinctrl_lookup;
-	}
-	
-	pdata->pinctrl_state_suspend
-		= pinctrl_lookup_state(pdata->ts_pinctrl,
-			PINCTRL_STATE_SUSPEND);
-	if (IS_ERR_OR_NULL(pdata->pinctrl_state_suspend)) {
-		retval = PTR_ERR(pdata->pinctrl_state_suspend);
-		dev_err(&(i2c_client_point->dev),
-			"Can not lookup %s pinstate %d\n",
-			PINCTRL_STATE_SUSPEND, retval);
-		goto err_pinctrl_lookup;
-	}
-	
-	pdata->pinctrl_state_release
-		= pinctrl_lookup_state(pdata->ts_pinctrl,
-			PINCTRL_STATE_RELEASE);
-	if (IS_ERR_OR_NULL(pdata->pinctrl_state_release)) {
-		retval = PTR_ERR(pdata->pinctrl_state_release);
-		dev_dbg(&(i2c_client_point->dev),
-			"Can not lookup %s pinstate %d\n",
-			PINCTRL_STATE_RELEASE, retval);
-	}
-	pinctrl_select_state(pdata->ts_pinctrl,
-				pdata->pinctrl_state_active);
-err_pinctrl_get:
-err_pinctrl_lookup:	
-	return 0;
 
+	pdata->ts_pinctrl = devm_pinctrl_get(dev);
+	if (IS_ERR(pdata->ts_pinctrl)) {
+		retval = PTR_ERR(pdata->ts_pinctrl);
+		pdata->ts_pinctrl = NULL;
+		dev_err(dev, "Failed to get pinctrl: %d\n", retval);
+		return retval;
+	}
+
+	pdata->pinctrl_state_active =
+		pinctrl_lookup_state(pdata->ts_pinctrl,
+				     PINCTRL_STATE_ACTIVE);
+	if (IS_ERR(pdata->pinctrl_state_active)) {
+		retval = PTR_ERR(pdata->pinctrl_state_active);
+		dev_err(dev, "Failed to lookup %s: %d\n",
+			PINCTRL_STATE_ACTIVE, retval);
+		return retval;
+	}
+
+	pdata->pinctrl_state_suspend =
+		pinctrl_lookup_state(pdata->ts_pinctrl,
+				     PINCTRL_STATE_SUSPEND);
+	if (IS_ERR(pdata->pinctrl_state_suspend)) {
+		retval = PTR_ERR(pdata->pinctrl_state_suspend);
+		dev_err(dev, "Failed to lookup %s: %d\n",
+			PINCTRL_STATE_SUSPEND, retval);
+		return retval;
+	}
+
+	pdata->pinctrl_state_release =
+		pinctrl_lookup_state(pdata->ts_pinctrl,
+				     PINCTRL_STATE_RELEASE);
+	if (IS_ERR(pdata->pinctrl_state_release)) {
+		retval = PTR_ERR(pdata->pinctrl_state_release);
+		dev_err(dev, "Failed to lookup %s: %d\n",
+			PINCTRL_STATE_RELEASE, retval);
+		return retval;
+	}
+
+	return 0;
 }
 
 static int himax852xf_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	int err = -ENOMEM;
+	bool gpio_power_configured = false;
 	struct himax_ts_data *ts;
 	struct himax_i2c_platform_data *pdata;
 
@@ -6896,10 +6897,28 @@ static int himax852xf_probe(struct i2c_client *client, const struct i2c_device_i
 #ifdef HX_RST_PIN_FUNC
 	ts->rst_gpio = pdata->gpio_reset;
 #endif
-	himax_pinctrl_init(pdata);
-	pinctrl_select_state(pdata->ts_pinctrl,
-					pdata->pinctrl_state_active);
-	himax_gpio_power_config(ts->client, pdata);
+	err = himax_pinctrl_init(pdata);
+	if (err) {
+		E("%s: pinctrl initialization failed: %d\n",
+		  __func__, err);
+		goto err_alloc_dt_pdata_failed;
+	}
+
+	err = pinctrl_select_state(pdata->ts_pinctrl,
+				   pdata->pinctrl_state_active);
+	if (err) {
+		E("%s: failed to select active pin state: %d\n",
+		  __func__, err);
+		goto err_alloc_dt_pdata_failed;
+	}
+
+	err = himax_gpio_power_config(ts->client, pdata);
+	if (err) {
+		E("%s: GPIO/power configuration failed: %d\n",
+		  __func__, err);
+		goto err_alloc_dt_pdata_failed;
+	}
+	gpio_power_configured = true;
 
 #ifndef CONFIG_OF
 	if (pdata->power) {
@@ -7014,6 +7033,10 @@ static int himax852xf_probe(struct i2c_client *client, const struct i2c_device_i
 	if (err) {
 		E("%s: Unable to register %s input device\n",
 			__func__, ts->input_dev->name);
+		if (ts->input_dev) {
+			input_free_device(ts->input_dev);
+			ts->input_dev = NULL;
+		}
 		goto err_input_register_device_failed;
 	}
 
@@ -7133,9 +7156,10 @@ err_get_intr_bit_failed:
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
 	unregister_early_suspend(&ts->early_suspend);
 #endif
-	pinctrl_select_state(ts->pdata->ts_pinctrl,
-					ts->pdata->pinctrl_state_release);
-	input_free_device(ts->input_dev);
+	if (ts->input_dev) {
+		input_unregister_device(ts->input_dev);
+		ts->input_dev = NULL;
+	}
 err_input_register_device_failed:
 #ifdef HX_TP_PROC_DIAG
 err_setchannel_failed:
@@ -7159,6 +7183,16 @@ err_alloc_dt_pdata_failed:
 #else
 err_get_platform_data_fail:
 #endif
+	if (pdata && pdata->ts_pinctrl &&
+	    !IS_ERR(pdata->ts_pinctrl) &&
+	    pdata->pinctrl_state_release &&
+	    !IS_ERR(pdata->pinctrl_state_release))
+		pinctrl_select_state(pdata->ts_pinctrl,
+				     pdata->pinctrl_state_release);
+	if (gpio_power_configured) {
+		himax_gpio_power_deconfig(client, pdata);
+		gpio_power_configured = false;
+	}
 	kfree(pdata);
 err_dt_platform_data_fail:
 	kfree(ts);
@@ -7182,6 +7216,12 @@ err_check_functionality_failed:
 static int himax852xf_remove(struct i2c_client *client)
 {
 	struct himax_ts_data *ts = i2c_get_clientdata(client);
+	struct himax_i2c_platform_data *pdata;
+
+	if (!ts)
+		return 0;
+
+	pdata = ts->pdata;
 
 	if(ts->irq_enabled){
 		himax_int_enable(ts->client->irq,0);
@@ -7201,9 +7241,9 @@ ts->ts_flash_wake_lock = NULL;
 		ts->ts_SMWP_wake_lock = NULL;
 #endif
 #if defined(CONFIG_TOUCHSCREEN_PROXIMITY)
-		if(pdata->proximity_bytp_enable)
+		if (pdata && pdata->proximity_bytp_enable)
 			wakeup_source_unregister(ts->ts_wake_lock);
-		    ts->ts_wake_lock = NULL;
+		ts->ts_wake_lock = NULL;
 #endif
 
 
@@ -7220,9 +7260,17 @@ ts->ts_flash_wake_lock = NULL;
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
 		unregister_early_suspend(&ts->early_suspend);
 #endif
-		pinctrl_select_state(ts->pdata->ts_pinctrl,
-					ts->pdata->pinctrl_state_release);
-		input_free_device(ts->input_dev);
+		if (pdata && pdata->ts_pinctrl &&
+		    !IS_ERR(pdata->ts_pinctrl) &&
+		    pdata->pinctrl_state_release &&
+		    !IS_ERR(pdata->pinctrl_state_release))
+			pinctrl_select_state(pdata->ts_pinctrl,
+					     pdata->pinctrl_state_release);
+		himax_gpio_power_deconfig(client, pdata);
+		if (ts->input_dev) {
+			input_unregister_device(ts->input_dev);
+			ts->input_dev = NULL;
+		}
 #ifdef  HX_TP_PROC_FLASH_DUMP
 		destroy_workqueue(ts->flash_wq);
 #endif
