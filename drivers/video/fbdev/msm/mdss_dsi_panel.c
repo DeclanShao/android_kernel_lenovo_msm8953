@@ -26,6 +26,14 @@
 #define DT_CMD_HDR 6
 #define DEFAULT_MDP_TRANSFER_TIME 14000
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF)
+//qijin add for compatible with the 2 FW of himax ,AUO and INX
+#define PANLE_NAME_AUO "auont51021 1200p video mode dsi panel"
+#define PANLE_NAME_INX "innont51021b 1200p video mode dsi panel"
+int panel_id_ret;
+//qijin add end
+#endif
+
 #define VSYNC_DELAY msecs_to_jiffies(17)
 
 static bool display_on = true;
@@ -3111,6 +3119,17 @@ int mdss_dsi_panel_init(struct device_node *node,
 	} else {
 		pr_info("%s: Panel Name = %s\n", __func__, panel_name);
 		strlcpy(&pinfo->panel_name[0], panel_name, MDSS_MAX_PANEL_LEN);
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF)
+//qijin add for compatible with the 2 FW of himax ,AUO and INX
+        if (0 == strcmp(panel_name,PANLE_NAME_AUO)) {
+            panel_id_ret = 0;
+        }else if(0 == strcmp(panel_name,PANLE_NAME_INX)){
+            panel_id_ret = 1;
+        }else{
+            panel_id_ret = 2;
+        }
+//qijin add end
+#endif
 	}
 	rc = mdss_panel_parse_dt(node, ctrl_pdata);
 	if (rc) {
