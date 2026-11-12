@@ -924,8 +924,9 @@ static int himax_input_register(struct himax_ts_data *ts)
 	set_bit(KEY_HOME, ts->input_dev->keybit);
 	set_bit(KEY_MENU, ts->input_dev->keybit);
 	set_bit(KEY_SEARCH, ts->input_dev->keybit);
-#if defined(HX_SMART_WAKEUP)||defined(HX_PALM_REPORT)
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP) || defined(HX_PALM_REPORT)
 	set_bit(KEY_POWER, ts->input_dev->keybit);
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	set_bit(KEY_CUST_01, ts->input_dev->keybit);
 	set_bit(KEY_CUST_02, ts->input_dev->keybit);
 	set_bit(KEY_CUST_03, ts->input_dev->keybit);
@@ -941,6 +942,7 @@ static int himax_input_register(struct himax_ts_data *ts)
 	set_bit(KEY_CUST_13, ts->input_dev->keybit);
 	set_bit(KEY_CUST_14, ts->input_dev->keybit);
 	set_bit(KEY_CUST_15, ts->input_dev->keybit);
+#endif
 #endif	
 	set_bit(BTN_TOUCH, ts->input_dev->keybit);
 
@@ -2375,7 +2377,7 @@ static struct notifier_block hallsensor_status_handler = {
 };*/
 #endif
 
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 static int himax_parse_wake_event(struct himax_ts_data *ts)
 {
 	uint8_t buf[128] = {0};
@@ -2516,7 +2518,7 @@ static int himax_parse_wake_event(struct himax_ts_data *ts)
 }
 #endif
 
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 static ssize_t double_tap_wake_show(struct device *dev,
 					 struct device_attribute *attr, char *buf)
 {
@@ -2539,6 +2541,8 @@ static ssize_t double_tap_wake_store(struct device *dev,
 		return ret;
 	if (enable > 1)
 		return -EINVAL;
+	if (READ_ONCE(ts->suspended))
+		return -EBUSY;
 
 	WRITE_ONCE(ts->gesture_cust_en[0], enable ? 1 : 0);
 	WRITE_ONCE(ts->SMWP_enable, enable ? 1 : 0);
@@ -3290,7 +3294,7 @@ static irqreturn_t himax_ts_thread(int irq, void *ptr)
 {
 	struct himax_ts_data *ts = ptr;
 	struct timespec timeStart, timeEnd, timeDelta;
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	int ret_event = 0, KEY_EVENT = 0;
 #endif
 	if (ts->debug_log_level & BIT(2)) {
@@ -3298,7 +3302,7 @@ static irqreturn_t himax_ts_thread(int irq, void *ptr)
 			/*I(" Irq start time = %ld.%06ld s\n",
 				timeStart.tv_sec, timeStart.tv_nsec/1000);*/
 	}
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	if (atomic_read(&ts->suspend_mode)&&(!FAKE_POWER_KEY_SEND)&&(ts->SMWP_enable)) {
 		I("Start to parse wake event\n");
 		__pm_wakeup_event(ts->ts_SMWP_wake_lock, TS_WAKE_LOCK_TIMEOUT);
@@ -3398,7 +3402,7 @@ static void himax_ts_release_irq(struct himax_ts_data *ts)
 	if (!ts)
 		return;
 
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	if (ts->irq_wake_enabled) {
 		int ret = irq_set_irq_wake(ts->client->irq, 0);
 
@@ -3498,7 +3502,7 @@ static int touch_event_handler(void *ptr)
 		tpd_flag = 0;
 
 		set_current_state(TASK_RUNNING);
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	if (atomic_read(&private_ts->suspend_mode)&&(!FAKE_POWER_KEY_SEND)&&(private_ts->SMWP_enable)) {
 		I("Start to parse wake event\n");
 		__pm_wakeup_event(private_ts->ts_SMWP_wake_lock, TS_WAKE_LOCK_TIMEOUT);
@@ -3618,7 +3622,7 @@ int himax_ts_register_interrupt(struct i2c_client *client)
 		irq_enable_count = 1;
 		mt_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);
 		I("%s: irq register at qpio: %02X\n", __func__, CUST_EINT_TOUCH_PANEL_NUM);
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 		irq_set_irq_wake(client->irq, 1);
 #endif
 	touch_thread = kthread_run(touch_event_handler, 0, TPD_DEVICE);
@@ -5988,7 +5992,7 @@ static struct file_operations himax_proc_glove_ops =
 };
 #endif
 
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 static ssize_t himax_SMWP_read(struct file *file, char *buf,
 	size_t len, loff_t *pos)
 {
@@ -6232,7 +6236,7 @@ static int himax_touch_proc_init(void)
 	}
 #endif
 
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	himax_proc_SMWP_file = proc_create(HIMAX_PROC_SMWP_FILE, (S_IWUSR|S_IRUGO|S_IWUGO),
 		himax_touch_proc_dir, &himax_proc_SMWP_ops);
 	if(himax_proc_SMWP_file == NULL)
@@ -6250,7 +6254,7 @@ static int himax_touch_proc_init(void)
 #endif
 
 	return 0 ;
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	fail_14: remove_proc_entry( HIMAX_PROC_SMWP_FILE, himax_touch_proc_dir );
 #endif
 #ifdef GLOVE
@@ -6287,7 +6291,7 @@ static int himax_touch_proc_init(void)
 
 static void himax_touch_proc_deinit(void)
 {
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 		remove_proc_entry( HIMAX_PROC_GESTURE_FILE, himax_touch_proc_dir );
 		remove_proc_entry( HIMAX_PROC_SMWP_FILE, himax_touch_proc_dir );
 #endif
@@ -7191,7 +7195,7 @@ static int himax852xf_probe(struct i2c_client *client, const struct i2c_device_i
 		}
 	}
 #endif
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	ts->SMWP_enable = 0;
 	ts->ts_SMWP_wake_lock =
 		wakeup_source_register(&client->dev, dev_name(&client->dev));
@@ -7229,7 +7233,7 @@ HW_RESET_ACTIVATE = 0;
 	if (err)
 		goto err_register_interrupt_failed;
 
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	err = device_create_file(&client->dev, &dev_attr_double_tap_wake);
 	if (err) {
 		dev_err(&client->dev, "failed to create double_tap_wake: %d\n", err);
@@ -7240,7 +7244,7 @@ HW_RESET_ACTIVATE = 0;
 return 0;
 
 err_register_interrupt_failed:
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	device_remove_file(&client->dev, &dev_attr_double_tap_wake);
 #endif
 	himax_ts_release_irq(ts);
@@ -7256,7 +7260,7 @@ if (ts->ts_flash_wake_lock) {
 	wakeup_source_unregister(ts->ts_flash_wake_lock);
 	ts->ts_flash_wake_lock = NULL;
 }
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 if (ts->ts_SMWP_wake_lock) {
 	wakeup_source_unregister(ts->ts_SMWP_wake_lock);
 	ts->ts_SMWP_wake_lock = NULL;
@@ -7366,7 +7370,7 @@ static int himax852xf_remove(struct i2c_client *client)
 		return 0;
 
 	pdata = ts->pdata;
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	device_remove_file(&client->dev, &dev_attr_double_tap_wake);
 #endif
 	himax_ts_release_irq(ts);
@@ -7383,7 +7387,7 @@ static int himax852xf_remove(struct i2c_client *client)
 		wakeup_source_unregister(ts->ts_flash_wake_lock);
 		ts->ts_flash_wake_lock = NULL;
 	}
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	if (ts->ts_SMWP_wake_lock) {
 		wakeup_source_unregister(ts->ts_SMWP_wake_lock);
 		ts->ts_SMWP_wake_lock = NULL;
@@ -7485,7 +7489,6 @@ static int himax852xf_suspend(struct device *dev)
 	}
 	else
 	{
-		ts->suspended = true;
 		I("%s: enter \n", __func__);
 	}
 	
@@ -7497,6 +7500,7 @@ static int himax852xf_suspend(struct device *dev)
 
 			if((g_proximity_en)&&(proximity_flag)){
 				I("[Proximity],Proximity on,and Near won't enter deep sleep now.\n");
+				ts->suspended = true;
 				atomic_set(&ts->suspend_mode, 1);
 				ts->first_pressed = 0;
 				ts->pre_finger_mask = 0;
@@ -7540,9 +7544,13 @@ if(HX_ON_HAND_SHAKING)//chip on hand shaking,wait hand shaking
 }
 #endif
 
-#ifdef HX_SMART_WAKEUP
-	if(ts->SMWP_enable)
-	{
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
+	if (ts->SMWP_enable) {
+		if (!ts->use_irq) {
+			dev_err(ts->dev,
+				"double-tap wake requires an interrupt line\n");
+			return -EOPNOTSUPP;
+		}
 		atomic_set(&ts->suspend_mode, 1);
 		ts->pre_finger_mask = 0;
 		FAKE_POWER_KEY_SEND=false;
@@ -7561,6 +7569,11 @@ if(HX_ON_HAND_SHAKING)//chip on hand shaking,wait hand shaking
 				buf[1] = 0x00;
 				i2c_himax_master_write(ts->client, buf, 2,
 						      DEFAULT_RETRY_CNT);
+				i2c_himax_write_command(ts->client, HX_CMD_TSSON,
+							DEFAULT_RETRY_CNT);
+				msleep(30);
+				i2c_himax_write_command(ts->client, HX_CMD_TSSLPOUT,
+							DEFAULT_RETRY_CNT);
 				dev_err(ts->dev, "failed to enable IRQ wake: %d\n", ret);
 				atomic_set(&ts->suspend_mode, 0);
 				ts->suspended = false;
@@ -7568,12 +7581,14 @@ if(HX_ON_HAND_SHAKING)//chip on hand shaking,wait hand shaking
 			}
 			ts->irq_wake_enabled = true;
 		}
+		ts->suspended = true;
 		I("Enable GESTURE and DOUBLE CLICK\n");
 		return 0;
 	}
 #endif
 
-	himax_int_enable(ts->client->irq,0);
+	if (ts->use_irq)
+		himax_int_enable(ts->client->irq, 0);
 
 #ifdef HX_CHIP_STATUS_MONITOR
 	HX_CHIP_POLLING_COUNT = 0;
@@ -7583,44 +7598,75 @@ if(HX_ON_HAND_SHAKING)//chip on hand shaking,wait hand shaking
 	//Himax 852xf IC enter sleep mode
 	buf[0] = HX_CMD_TSSOFF;
 	ret = i2c_himax_master_write(ts->client, buf, 1, DEFAULT_RETRY_CNT);
-	if (ret < 0)
-	{
-		E("[himax] %s: I2C access failed addr = 0x%x\n", __func__, ts->client->addr);
+	if (ret < 0) {
+		dev_err(ts->dev, "failed to stop sensing before suspend: %d\n",
+			ret);
+		goto suspend_restore;
 	}
 	msleep(40);
 
 	buf[0] = HX_CMD_TSSLPIN;
 	ret = i2c_himax_master_write(ts->client, buf, 1, DEFAULT_RETRY_CNT);
-	if (ret < 0)
-	{
-		E("[himax] %s: I2C access failed addr = 0x%x\n", __func__, ts->client->addr);
+	if (ret < 0) {
+		dev_err(ts->dev, "failed to enter sleep before suspend: %d\n",
+			ret);
+		goto suspend_restore;
 	}
 	
-	if (!ts->use_irq) {
-		ret = cancel_work_sync(&ts->work);
-		if (ret)
-			himax_int_enable(ts->client->irq,1);
-	}
+	if (!ts->use_irq)
+		cancel_work_sync(&ts->work);
 
 	//ts->first_pressed = 0;
 	atomic_set(&ts->suspend_mode, 1);
 	ts->pre_finger_mask = 0;
 	ret = pinctrl_select_state(ts->pdata->ts_pinctrl,
 				   ts->pdata->pinctrl_state_suspend);
-	if (ret)
-		dev_err(ts->dev, "failed to select suspend pinctrl state: %d\n",
-			ret);
+	if (ret) {
+		dev_err(ts->dev,
+			"failed to select suspend pinctrl state: %d\n", ret);
+		i2c_himax_write_command(ts->client, HX_CMD_TSSON,
+					DEFAULT_RETRY_CNT);
+		msleep(30);
+		i2c_himax_write_command(ts->client, HX_CMD_TSSLPOUT,
+					DEFAULT_RETRY_CNT);
+		atomic_set(&ts->suspend_mode, 0);
+		if (ts->use_irq)
+			himax_int_enable(ts->client->irq, 1);
+#ifdef HX_CHIP_STATUS_MONITOR
+		queue_delayed_work(ts->himax_chip_monitor_wq,
+				   &ts->himax_chip_monitor,
+				   HX_POLLING_TIMER * HZ);
+#endif
+		return ret;
+	}
 
 	if (ts->pdata->powerOff3V3 && ts->pdata->power)
 		ts->pdata->power(0);
-	
+
+	ts->suspended = true;
 	return 0;
+
+suspend_restore:
+	i2c_himax_write_command(ts->client, HX_CMD_TSSON,
+				DEFAULT_RETRY_CNT);
+	msleep(30);
+	i2c_himax_write_command(ts->client, HX_CMD_TSSLPOUT,
+				DEFAULT_RETRY_CNT);
+	atomic_set(&ts->suspend_mode, 0);
+	if (ts->use_irq)
+		himax_int_enable(ts->client->irq, 1);
+#ifdef HX_CHIP_STATUS_MONITOR
+	queue_delayed_work(ts->himax_chip_monitor_wq,
+			   &ts->himax_chip_monitor,
+			   HX_POLLING_TIMER * HZ);
+#endif
+	return ret;
 }
 
 static int himax852xf_resume(struct device *dev)
 {
-#ifdef HX_SMART_WAKEUP
 	int ret;
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	uint8_t buf[2] = {0};
 #endif
 	int ret_esd;
@@ -7643,16 +7689,6 @@ static int himax852xf_resume(struct device *dev)
 		I("%s: Already resumed. Skipped. \n", __func__);
 		return 0;
 	}
-#ifdef HX_SMART_WAKEUP
-	if (ts->irq_wake_enabled) {
-		ret = irq_set_irq_wake(ts->client->irq, 0);
-		if (ret)
-			dev_warn(ts->dev, "failed to disable IRQ wake: %d\n", ret);
-		else
-			ts->irq_wake_enabled = false;
-	}
-#endif
-
 	ret = pinctrl_select_state(ts->pdata->ts_pinctrl,
 				   ts->pdata->pinctrl_state_active);
 	if (ret) {
@@ -7660,6 +7696,17 @@ static int himax852xf_resume(struct device *dev)
 			ret);
 		return ret;
 	}
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
+	if (ts->irq_wake_enabled) {
+		ret = irq_set_irq_wake(ts->client->irq, 0);
+		if (ret) {
+			dev_err(ts->dev, "failed to disable IRQ wake: %d\n", ret);
+			return ret;
+		}
+		ts->irq_wake_enabled = false;
+	}
+#endif
 
 	if (ts->pdata->powerOff3V3 && ts->pdata->power)
 		ts->pdata->power(1);
@@ -7683,7 +7730,7 @@ static int himax852xf_resume(struct device *dev)
 			}
 	}
 #endif
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	if(ts->SMWP_enable)
 	{
 		//Sense Off
@@ -7717,7 +7764,8 @@ static int himax852xf_resume(struct device *dev)
 	i2c_himax_write_command(ts->client, HX_CMD_TSSLPOUT, DEFAULT_RETRY_CNT);
 	atomic_set(&ts->suspend_mode, 0);
 
-	himax_int_enable(ts->client->irq,1);
+	if (ts->use_irq)
+		himax_int_enable(ts->client->irq, 1);
 
 #ifdef HX_CHIP_STATUS_MONITOR
 	HX_CHIP_POLLING_COUNT = 0;
@@ -7810,7 +7858,7 @@ if(HX_ON_HAND_SHAKING)//chip on hand shaking,wait hand shaking
 }
 #endif
 
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	if(ts->SMWP_enable)
 	{
 		atomic_set(&ts->suspend_mode, 1);
@@ -7874,8 +7922,8 @@ if(HX_ON_HAND_SHAKING)//chip on hand shaking,wait hand shaking
 
 static void himax852xf_resume(struct early_suspend *h)
 {
-#ifdef HX_SMART_WAKEUP
 	int ret;
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	uint8_t buf[2] = {0};
 #endif
 #ifdef HX_CHIP_STATUS_MONITOR
@@ -7917,7 +7965,7 @@ static void himax852xf_resume(struct early_suspend *h)
 			}
 	}
 #endif
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	if(ts->SMWP_enable)
 	{
 		//Sense Off

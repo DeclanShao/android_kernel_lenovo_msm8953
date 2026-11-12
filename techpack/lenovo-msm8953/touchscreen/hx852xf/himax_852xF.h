@@ -25,6 +25,7 @@
 #include <linux/input.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
+#include <linux/kconfig.h>
 #include <linux/async.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
@@ -102,7 +103,6 @@
 //#define HX_LOADIN_CONFIG
 #define HX_AUTO_UPDATE_FW
 //#define HX_AUTO_UPDATE_CONFIG		//if enable HX_AUTO_UPDATE_CONFIG, need to disable HX_LOADIN_CONFIG
-#define HX_SMART_WAKEUP
 #define GLOVE
 //#define HX_PALM_REPORT
 #define HX_ESD_WORKAROUND
@@ -276,7 +276,7 @@ struct himax_ts_data {
 	int rst_gpio;
 #endif
 
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 	uint8_t SMWP_enable;
 	struct wakeup_source *ts_SMWP_wake_lock;
 	uint8_t gesture_cust_en[16];
@@ -535,7 +535,7 @@ static struct proc_dir_entry *himax_proc_reset_file 		= NULL;
 void ESD_HW_REST(void);
 #endif
 
-#ifdef HX_SMART_WAKEUP
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
 #define GEST_PTLG_ID_LEN    (4)
 #define GEST_PTLG_HDR_LEN   (4)
 #define GEST_PTLG_HDR_ID1   (0xCC)

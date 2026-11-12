@@ -13,6 +13,16 @@ config TOUCHSCREEN_HIMAX_HX852XF_DEBUG
 	depends on TOUCHSCREEN_HIMAX_HX852XF=y
 	help
 	  Enable debug and procfs interfaces for the Himax HX852xF driver.
+
+config TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP
+	bool "HIMAX HX852xF double-tap wake support"
+	depends on TOUCHSCREEN_HIMAX_HX852XF && MACH_LENOVO_TB8703
+	default n
+	help
+	  Enable the optional double-tap-to-wake feature for the Lenovo TB8703.
+	  The feature is disabled at runtime by default and can be enabled through
+	  the driver's double_tap_wake sysfs attribute.
+
 config HMX_DB
 	tristate "HIMAX driver test over Dragon Board"
 	depends on I2C
