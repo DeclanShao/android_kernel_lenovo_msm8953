@@ -3126,6 +3126,11 @@ int mdss_dsi_panel_init(struct device_node *node,
 	}
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF)
 	/* Unknown panels must never inherit the AUO (zero) identifier. */
+	if (panel_name && !strcmp(panel_name, PANLE_NAME_AUO))
+		panel_id = 0;
+	else if (panel_name && !strcmp(panel_name, PANLE_NAME_INX))
+		panel_id = 1;
+
 	WRITE_ONCE(panel_id_ret, panel_id);
 	pr_info("%s: Himax panel id = %d (%s)\n", __func__, panel_id,
 		panel_name ? panel_name : "unknown");
