@@ -447,6 +447,9 @@ struct mdss_dsi_ctrl_pdata {
 	int rst_gpio;
 	int disp_en_gpio;
 	int bklt_en_gpio;
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	int lcden_gpio;
+#endif
 	bool bklt_en_gpio_invert;
 	bool bklt_en_gpio_state;
 	int avdd_en_gpio;
