@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
+#include <linux/kconfig.h>
 /* Copyright (c) 2008-2018, 2020-2021, The Linux Foundation. All rights reserved. */
 
 #ifndef MDSS_PANEL_H
@@ -1323,6 +1324,10 @@ static inline u8 mdss_panel_calc_frame_rate(struct mdss_panel_info *pinfo)
  * controller.
  */
 struct mdss_panel_cfg *mdss_panel_intf_type(int intf_val);
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+int mdss_panel_get_boot_cfg(void);
+#endif
 
 /**
  * mdss_is_ready() - checks if mdss is probed and ready
