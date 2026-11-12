@@ -4,3 +4,4 @@ config MACH_LENOVO_MSM8953
 	  Say Y here to enable support for Lenovo MSM8953 platform.
 
 source "techpack/lenovo-msm8953/touchscreen/Kconfig"
+source "techpack/lenovo-msm8953/misc/Kconfig"
