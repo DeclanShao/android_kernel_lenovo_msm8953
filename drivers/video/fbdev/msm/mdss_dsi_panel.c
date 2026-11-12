@@ -432,10 +432,12 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			   __func__, __LINE__);
 	}
 
+#if !IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
 	if (!gpio_is_valid(ctrl_pdata->rst_gpio)) {
 		pr_debug("%s:%d, reset line not configured\n",
 			   __func__, __LINE__);
 		return rc;
+#endif
 	}
 
 	pr_debug("%s: enable = %d\n", __func__, enable);
@@ -529,8 +531,10 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			gpio_set_value((ctrl_pdata->disp_en_gpio), 0);
 			gpio_free(ctrl_pdata->disp_en_gpio);
 		}
+#if !IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
 		gpio_set_value((ctrl_pdata->rst_gpio), 0);
 		gpio_free(ctrl_pdata->rst_gpio);
+#endif
 		if (gpio_is_valid(ctrl_pdata->lcd_mode_sel_gpio)) {
 			gpio_set_value(ctrl_pdata->lcd_mode_sel_gpio, 0);
 			gpio_free(ctrl_pdata->lcd_mode_sel_gpio);
@@ -899,6 +903,14 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 	 * than it, the controller can malfunction.
 	 */
 	pr_debug("%s: bl_level:%d\n", __func__, bl_level);
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	if (mdss_panel_get_boot_cfg() != 1) {
+		bl_level = 0;
+		pr_info("%s: bootloader LCD configuration unavailable; backlight off\n",
+			__func__);
+	}
+#endif
 
 	/* do not allow backlight to change when panel in disable mode */
 	if (pdata->panel_disable_mode && (bl_level != 0))
