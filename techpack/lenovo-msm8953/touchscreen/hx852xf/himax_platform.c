@@ -408,8 +408,14 @@ int himax_gpio_power_config(struct i2c_client *client,struct himax_i2c_platform_
 			goto err_gpio_irq_req;
 		}
 		client->irq = gpio_to_irq(pdata->gpio_irq);
+		if (client->irq < 0) {
+			error = client->irq;
+			E("gpio_to_irq failed: %d\n", error);
+			goto err_gpio_irq_req;
+		}
 	} else {
 		E("irq gpio not provided\n");
+		error = -EINVAL;
 		goto err_power_on;
 	}
 
@@ -451,144 +457,207 @@ static int himax_power_on(struct himax_i2c_platform_data *pdata, bool on)
 {
 	int rc;
 
-	if (on == false)
-		goto power_off;
+	if (!pdata->vcc_i2c)
+		return -EINVAL;
 
+	if (!on) {
+		reg_set_optimum_mode_check(pdata->vcc_i2c, 0);
+		rc = regulator_disable(pdata->vcc_i2c);
+		if (rc)
+			E("Regulator vcc_i2c disable failed rc=%d\n", rc);
+		msleep(50);
+		return rc;
+	}
 
-		rc = reg_set_optimum_mode_check(pdata->vcc_i2c, HX_I2C_LOAD_UA);
-		if (rc < 0) {
-			E("Regulator vcc_i2c set_opt failed rc=%d\n", rc);
-			//goto error_reg_opt_i2c;
-		}
+	rc = reg_set_optimum_mode_check(pdata->vcc_i2c, HX_I2C_LOAD_UA);
+	if (rc < 0) {
+		E("Regulator vcc_i2c set_opt failed rc=%d\n", rc);
+		return rc;
+	}
 
-		rc = regulator_enable(pdata->vcc_i2c);
-		if (rc) {
-			E("Regulator vcc_i2c enable failed rc=%d\n", rc);
-			//goto error_reg_en_vcc_i2c;
-		}
-	
+	rc = regulator_enable(pdata->vcc_i2c);
+	if (rc) {
+		E("Regulator vcc_i2c enable failed rc=%d\n", rc);
+		reg_set_optimum_mode_check(pdata->vcc_i2c, 0);
+		return rc;
+	}
 
 	msleep(130);
-
 	return 0;
-
-power_off:
-
-		reg_set_optimum_mode_check(pdata->vcc_i2c, 0);
-		regulator_disable(pdata->vcc_i2c);
-	msleep(50);
-	return 0;
-
 }
 
-static int himax_regulator_configure(struct i2c_client *client,struct himax_i2c_platform_data *pdata, bool on)
+static int himax_regulator_configure(struct i2c_client *client,
+				      struct himax_i2c_platform_data *pdata,
+				      bool on)
 {
 	int rc;
 
-	if (on == false)
-		goto hw_shutdown;
-
+	if (!on) {
+		if (!pdata->vcc_i2c)
+			return 0;
+		if (regulator_count_voltages(pdata->vcc_i2c) > 0)
+			regulator_set_voltage(pdata->vcc_i2c, 0,
+					      HX_I2C_VTG_MAX_UV);
+		regulator_put(pdata->vcc_i2c);
+		pdata->vcc_i2c = NULL;
+		return 0;
+	}
 
 	pdata->vcc_i2c = regulator_get(&client->dev, "vcc_i2c");
 	if (IS_ERR(pdata->vcc_i2c)) {
 		rc = PTR_ERR(pdata->vcc_i2c);
-		E("Regulator get failed rc=%d\n",	rc);
-		//goto error_get_vtg_i2c;
+		pdata->vcc_i2c = NULL;
+		E("Regulator get failed rc=%d\n", rc);
+		return rc;
 	}
+
 	if (regulator_count_voltages(pdata->vcc_i2c) > 0) {
 		rc = regulator_set_voltage(pdata->vcc_i2c,
-			HX_I2C_VTG_MIN_UV, HX_I2C_VTG_MAX_UV);
+					   HX_I2C_VTG_MIN_UV,
+					   HX_I2C_VTG_MAX_UV);
 		if (rc) {
 			E("regulator set_vtg failed rc=%d\n", rc);
-			//goto error_set_vtg_i2c;
+			regulator_put(pdata->vcc_i2c);
+			pdata->vcc_i2c = NULL;
+			return rc;
 		}
 	}
 
-
-return 0;
-
-
-hw_shutdown:
-		if (regulator_count_voltages(pdata->vcc_i2c) > 0)
-			regulator_set_voltage(pdata->vcc_i2c, 0,
-						HX_I2C_VTG_MAX_UV);
-		regulator_put(pdata->vcc_i2c);
-	
-	return 0;	
-
-
+	return 0;
 }
 
-int himax_gpio_power_config(struct i2c_client *client,struct himax_i2c_platform_data *pdata)
+int himax_gpio_power_config(struct i2c_client *client,
+			     struct himax_i2c_platform_data *pdata)
 {
-	int error=0;
-	//int rc;
-	error = himax_regulator_configure(client, pdata, true);
+	int error;
 
-	if (pdata->gpio_reset >= 0) {
+	error = himax_regulator_configure(client, pdata, true);
+	if (error)
+		return error;
+
+	if (gpio_is_valid(pdata->gpio_reset)) {
 		error = gpio_request(pdata->gpio_reset, "himax-reset");
-		if (error < 0){
-				E("%s: request reset pin failed\n", __func__);
-				return error;
+		if (error) {
+			E("%s: request reset pin failed: %d\n",
+			  __func__, error);
+			goto err_regulator;
 		}
+
 		error = gpio_direction_output(pdata->gpio_reset, 0);
 		if (error) {
-			E("unable to set direction for gpio [%d]\n",
-				pdata->gpio_reset);
-			return error;
+			E("unable to set direction for reset gpio [%d]\n",
+			  pdata->gpio_reset);
+			goto err_reset_gpio;
 		}
 	}
-	if (pdata->gpio_3v3_en >= 0) {
+
+	if (gpio_is_valid(pdata->gpio_3v3_en)) {
 		error = gpio_request(pdata->gpio_3v3_en, "himax-3v3_en");
-		if (error < 0) {
-				E("%s: request 3v3_en pin failed\n", __func__);
-				return error;
-			}
-		gpio_direction_output(pdata->gpio_3v3_en, 1);
-		I("3v3_en pin =%d\n", gpio_get_value(pdata->gpio_3v3_en));
+		if (error) {
+			E("%s: request 3v3_en pin failed: %d\n",
+			  __func__, error);
+			goto err_reset_gpio;
+		}
+
+		error = gpio_direction_output(pdata->gpio_3v3_en, 1);
+		if (error) {
+			E("unable to set direction for 3v3 gpio [%d]\n",
+			  pdata->gpio_3v3_en);
+			goto err_3v3_gpio;
+		}
 	}
+
 	error = himax_power_on(pdata, true);
-
 	if (error) {
-		E("Failed to power on hardware\n");
-		//goto err_gpio_reset_req;
+		E("Failed to power on hardware: %d\n", error);
+		goto err_3v3_gpio;
 	}
 
-	
-	if (gpio_is_valid(pdata->gpio_irq)) {
-	/* configure touchscreen irq gpio */
+	if (!gpio_is_valid(pdata->gpio_irq)) {
+		E("irq gpio not provided\n");
+		error = -EINVAL;
+		goto err_power;
+	}
+
 	error = gpio_request(pdata->gpio_irq, "himax_gpio_irq");
 	if (error) {
-			E("unable to request gpio [%d]\n",pdata->gpio_irq);
-			return error;
-		}
-		error = gpio_direction_input(pdata->gpio_irq);
-		if (error) {
-			E("unable to set direction for gpio [%d]\n",pdata->gpio_irq);
-			return error;
-		}
-		client->irq = gpio_to_irq(pdata->gpio_irq);
-	} else {
-		E("irq gpio not provided\n");
-		return error;
+		E("unable to request gpio [%d]: %d\n",
+		  pdata->gpio_irq, error);
+		goto err_power;
+	}
+
+	error = gpio_direction_input(pdata->gpio_irq);
+	if (error) {
+		E("unable to set direction for irq gpio [%d]\n",
+		  pdata->gpio_irq);
+		goto err_irq_gpio;
+	}
+
+	client->irq = gpio_to_irq(pdata->gpio_irq);
+	if (client->irq < 0) {
+		error = client->irq;
+		E("gpio_to_irq failed: %d\n", error);
+		goto err_irq_gpio;
 	}
 
 	msleep(20);
-	if (pdata->gpio_reset >= 0) {
+	if (gpio_is_valid(pdata->gpio_reset)) {
 		error = gpio_direction_output(pdata->gpio_reset, 1);
 		if (error) {
-			E("unable to set direction for gpio [%d]\n",
-				pdata->gpio_reset);
-				return error;
+			E("unable to set direction for reset gpio [%d]\n",
+			  pdata->gpio_reset);
+			goto err_irq_gpio;
 		}
 	}
 
 	msleep(20);
-	
-return error;
+	return 0;
+
+err_irq_gpio:
+	gpio_free(pdata->gpio_irq);
+err_power:
+	himax_power_on(pdata, false);
+err_3v3_gpio:
+	if (gpio_is_valid(pdata->gpio_3v3_en)) {
+		gpio_direction_output(pdata->gpio_3v3_en, 0);
+		gpio_free(pdata->gpio_3v3_en);
+	}
+err_reset_gpio:
+	if (gpio_is_valid(pdata->gpio_reset))
+		gpio_free(pdata->gpio_reset);
+err_regulator:
+	himax_regulator_configure(client, pdata, false);
+	return error;
 }
 
 #endif
+
+void himax_gpio_power_deconfig(struct i2c_client *client,
+			       struct himax_i2c_platform_data *pdata)
+{
+	if (!pdata)
+		return;
+
+	if (gpio_is_valid(pdata->gpio_reset))
+		gpio_direction_output(pdata->gpio_reset, 0);
+#if !defined(CONFIG_HMX_DB)
+	if (gpio_is_valid(pdata->gpio_3v3_en))
+		gpio_direction_output(pdata->gpio_3v3_en, 0);
+#endif
+
+	himax_power_on(pdata, false);
+
+	if (gpio_is_valid(pdata->gpio_irq))
+		gpio_free(pdata->gpio_irq);
+	if (gpio_is_valid(pdata->gpio_reset))
+		gpio_free(pdata->gpio_reset);
+#if !defined(CONFIG_HMX_DB)
+	if (gpio_is_valid(pdata->gpio_3v3_en))
+		gpio_free(pdata->gpio_3v3_en);
+#endif
+
+	himax_regulator_configure(client, pdata, false);
+}
 
 #endif
 
