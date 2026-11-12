@@ -466,15 +466,12 @@ static int mdss_dsi_panel_power_ctrl(struct mdss_panel_data *pdata,
 		return 0;
 
 #if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
-	if (power_state == MDSS_PANEL_POWER_ON ||
-		power_state == MDSS_PANEL_POWER_OFF ||
-		power_state == MDSS_PANEL_POWER_LCD_DISABLED) {
-		ret = mdss_dsi_panel_lcden_gpio_ctrl(
-			container_of(pdata, struct mdss_dsi_ctrl_pdata,
-				panel_data), power_state == MDSS_PANEL_POWER_ON);
-		if (ret)
-			return ret;
-	}
+	ret = mdss_dsi_panel_lcden_gpio_ctrl(
+		container_of(pdata, struct mdss_dsi_ctrl_pdata,
+			panel_data), power_state != MDSS_PANEL_POWER_OFF &&
+			power_state != MDSS_PANEL_POWER_LCD_DISABLED);
+	if (ret)
+		return ret;
 #endif
 
 	switch (power_state) {
