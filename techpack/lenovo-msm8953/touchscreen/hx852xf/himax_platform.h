@@ -136,6 +136,9 @@ extern int himax_ts_register_interrupt(struct i2c_client *client);
 extern void himax_rst_gpio_set(int pinnum, uint8_t value);
 extern uint8_t himax_int_gpio_read(int pinnum);
 
-extern int himax_gpio_power_config(struct i2c_client *client,struct himax_i2c_platform_data *pdata);
+extern int himax_gpio_power_config(struct i2c_client *client,
+				   struct himax_i2c_platform_data *pdata);
+extern void himax_gpio_power_deconfig(struct i2c_client *client,
+				      struct himax_i2c_platform_data *pdata);
 
 #endif
