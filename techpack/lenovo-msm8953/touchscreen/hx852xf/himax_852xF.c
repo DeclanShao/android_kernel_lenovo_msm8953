@@ -2369,14 +2369,19 @@ static struct notifier_block hallsensor_status_handler = {
 #ifdef HX_SMART_WAKEUP
 static int himax_parse_wake_event(struct himax_ts_data *ts)
 {
-	uint8_t buf[128];
+	uint8_t buf[128] = {0};
+	int ret;
 	unsigned char check_sum_cal = 0;
 	//int tmp_max_x=0x00,tmp_min_x=0xFFFF,tmp_max_y=0x00,tmp_min_y=0xFFFF;
 	//int gest_len, gest_point;
 	int i=0, check_FC = 0, gesture_flag = 0;
 
-	if (i2c_himax_read(ts->client, 0x86, buf, 128,DEFAULT_RETRY_CNT))
-		E("%s: can't read data from chip!\n", __func__);
+	ret = i2c_himax_read(ts->client, 0x86, buf, 128, DEFAULT_RETRY_CNT);
+	if (ret < 0) {
+		dev_err(ts->dev, "%s: failed to read gesture data: %d\n",
+			__func__, ret);
+		return 0;
+	}
 	I("get ID value = %x,%x,%x,%x,%x,%x,%x,%x of thi event\n",
 	buf[0],buf[1],buf[2],buf[3],buf[4],buf[5],buf[6],buf[7]);
 	for(i=0;i<GEST_PTLG_ID_LEN;i++)
@@ -2500,6 +2505,41 @@ static int himax_parse_wake_event(struct himax_ts_data *ts)
 	else
 		return gesture_flag;
 }
+#endif
+
+#ifdef HX_SMART_WAKEUP
+static ssize_t double_tap_wake_show(struct device *dev,
+					 struct device_attribute *attr, char *buf)
+{
+	struct himax_ts_data *ts = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%u\n",
+			 READ_ONCE(ts->SMWP_enable) ? 1 : 0);
+}
+
+static ssize_t double_tap_wake_store(struct device *dev,
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
+{
+	struct himax_ts_data *ts = dev_get_drvdata(dev);
+	unsigned long enable;
+	int ret;
+
+	ret = kstrtoul(buf, 0, &enable);
+	if (ret)
+		return ret;
+	if (enable > 1)
+		return -EINVAL;
+
+	WRITE_ONCE(ts->gesture_cust_en[0], enable ? 1 : 0);
+	WRITE_ONCE(ts->SMWP_enable, enable ? 1 : 0);
+	dev_info(dev, "double-tap wake %s\n", enable ? "enabled" : "disabled");
+
+	return count;
+}
+static DEVICE_ATTR(double_tap_wake, 0644,
+		   double_tap_wake_show, double_tap_wake_store);
+
 #endif
 
 static void himax_ts_button_func(int tp_key_index,struct himax_ts_data *ts)
@@ -3396,15 +3436,7 @@ int himax_ts_register_interrupt(struct i2c_client *client)
 
 		ts->irq_enabled = 1;
 		irq_enable_count = 1;
-#ifdef HX_SMART_WAKEUP
-		ret = irq_set_irq_wake(client->irq, 1);
-		if (ret) {
-			dev_err(&client->dev, "failed to enable IRQ wake: %d\n",
-				ret);
-			return ret;
-		}
-		ts->irq_wake_enabled = true;
-#endif
+
 		dev_info(&client->dev, "Himax IRQ registered: %d\n",
 			 client->irq);
 	} else {
@@ -7188,9 +7220,20 @@ HW_RESET_ACTIVATE = 0;
 	if (err)
 		goto err_register_interrupt_failed;
 
+#ifdef HX_SMART_WAKEUP
+	err = device_create_file(&client->dev, &dev_attr_double_tap_wake);
+	if (err) {
+		dev_err(&client->dev, "failed to create double_tap_wake: %d\n", err);
+		goto err_register_interrupt_failed;
+	}
+#endif
+
 return 0;
 
 err_register_interrupt_failed:
+#ifdef HX_SMART_WAKEUP
+	device_remove_file(&client->dev, &dev_attr_double_tap_wake);
+#endif
 	himax_ts_release_irq(ts);
 	if (ts->himax_wq) {
 		hrtimer_cancel(&ts->timer);
@@ -7314,6 +7357,9 @@ static int himax852xf_remove(struct i2c_client *client)
 		return 0;
 
 	pdata = ts->pdata;
+#ifdef HX_SMART_WAKEUP
+	device_remove_file(&client->dev, &dev_attr_double_tap_wake);
+#endif
 	himax_ts_release_irq(ts);
 
 	if (ts->himax_wq) {
@@ -7494,11 +7540,26 @@ if(HX_ON_HAND_SHAKING)//chip on hand shaking,wait hand shaking
 		buf[0] = 0x8F;
 		buf[1] = 0x20;
 		ret = i2c_himax_master_write(ts->client, buf, 2, DEFAULT_RETRY_CNT);
-		if (ret < 0)
-		{
-			E("[himax] %s: I2C access failed addr = 0x%x\n", __func__, ts->client->addr);
+		if (ret < 0) {
+			dev_err(ts->dev, "failed to enable gesture mode: %d\n", ret);
+			atomic_set(&ts->suspend_mode, 0);
+			ts->suspended = false;
+			return ret;
 		}
-		I("Enable GESTURE and DOUBLE CLICK, reject suspend \n");
+		if (ts->use_irq && !ts->irq_wake_enabled) {
+			ret = irq_set_irq_wake(ts->client->irq, 1);
+			if (ret) {
+				buf[1] = 0x00;
+				i2c_himax_master_write(ts->client, buf, 2,
+						      DEFAULT_RETRY_CNT);
+				dev_err(ts->dev, "failed to enable IRQ wake: %d\n", ret);
+				atomic_set(&ts->suspend_mode, 0);
+				ts->suspended = false;
+				return ret;
+			}
+			ts->irq_wake_enabled = true;
+		}
+		I("Enable GESTURE and DOUBLE CLICK\n");
 		return 0;
 	}
 #endif
@@ -7569,6 +7630,15 @@ static int himax852xf_resume(struct device *dev)
 		I("%s: Already resumed. Skipped. \n", __func__);
 		return 0;
 	}
+#ifdef HX_SMART_WAKEUP
+	if (ts->irq_wake_enabled) {
+		ret = irq_set_irq_wake(ts->client->irq, 0);
+		if (ret)
+			dev_warn(ts->dev, "failed to disable IRQ wake: %d\n", ret);
+		else
+			ts->irq_wake_enabled = false;
+	}
+#endif
 
 	pinctrl_select_state(ts->pdata->ts_pinctrl,
 					ts->pdata->pinctrl_state_active);
