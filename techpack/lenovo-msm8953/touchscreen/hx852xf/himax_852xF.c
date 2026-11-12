@@ -14,6 +14,7 @@
 */
 
 #include "himax_852xF.h"
+#include <linux/compiler.h>
 
 #define SUPPORT_FINGER_DATA_CHECKSUM 0x0F
 #define TS_WAKE_LOCK_TIMEOUT		(2 * HZ)
