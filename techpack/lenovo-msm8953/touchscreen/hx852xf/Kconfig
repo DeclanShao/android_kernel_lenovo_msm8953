@@ -3,16 +3,16 @@
 #
 
 config TOUCHSCREEN_HIMAX_HX852XF
-        tristate "HIMAX HX852xF incell serious i2c touchscreen"
-		depends on I2C
-		help
-		This enables support for HIMAX HX852xF over I2C based touchscreens.
+	tristate "HIMAX HX852xF I2C touchscreen"
+	depends on I2C
+	help
+	  Enable support for Himax HX852xF I2C touchscreen controllers.
 
 config TOUCHSCREEN_HIMAX_HX852XF_DEBUG
-        tristate "HIMAX debug function"
-		depends on I2C
-		help
-		This enables support for HIMAX debug function.
+	bool "HIMAX HX852xF debug support"
+	depends on TOUCHSCREEN_HIMAX_HX852XF=y
+	help
+	  Enable debug and procfs interfaces for the Himax HX852xF driver.
 config HMX_DB
 	tristate "HIMAX driver test over Dragon Board"
 	depends on I2C

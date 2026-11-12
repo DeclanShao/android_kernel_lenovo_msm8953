@@ -221,6 +221,7 @@ struct himax_ts_data {
 	uint8_t raw_data_nframes;
 	uint8_t nFinger_support;
 	uint8_t irq_enabled;
+	bool irq_wake_enabled;
 	uint8_t diag_self[50];
 	
 	uint16_t finger_pressed;

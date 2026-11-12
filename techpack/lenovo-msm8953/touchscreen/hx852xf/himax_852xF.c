@@ -3344,51 +3344,86 @@ static void himax_ts_work_func(struct work_struct *work)
 	himax_ts_work(ts);
 }
 
+static void himax_ts_release_irq(struct himax_ts_data *ts)
+{
+	if (!ts)
+		return;
+
+#ifdef HX_SMART_WAKEUP
+	if (ts->irq_wake_enabled) {
+		int ret = irq_set_irq_wake(ts->client->irq, 0);
+
+		if (ret)
+			dev_warn(ts->dev, "failed to disable IRQ wake: %d\n", ret);
+		ts->irq_wake_enabled = false;
+	}
+#endif
+
+	if (ts->irq_enabled) {
+		himax_int_enable(ts->client->irq, 0);
+		free_irq(ts->client->irq, ts);
+		ts->irq_enabled = 0;
+	}
+}
+
 int himax_ts_register_interrupt(struct i2c_client *client)
 {
 	struct himax_ts_data *ts = i2c_get_clientdata(client);
 	int ret = 0;
 
 	ts->irq_enabled = 0;
+	ts->irq_wake_enabled = false;
 	ts->use_irq = 0;
-	//Work functon
-	if (client->irq) {/*INT mode*/
+
+	if (client->irq) {
 		ts->use_irq = 1;
-		if(HX_INT_IS_EDGE)
-			{
-				I("%s edge triiger falling\n ",__func__);
-				ret = request_threaded_irq(client->irq, NULL, himax_ts_thread,IRQF_TRIGGER_FALLING | IRQF_ONESHOT, client->name, ts);
-			}
+		if (HX_INT_IS_EDGE)
+			ret = request_threaded_irq(client->irq, NULL,
+					   himax_ts_thread,
+					   IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+					   client->name, ts);
 		else
-			{
-				I("%s level trigger low\n ",__func__);
-				ret = request_threaded_irq(client->irq, NULL, himax_ts_thread,IRQF_TRIGGER_LOW | IRQF_ONESHOT, client->name, ts);
-			}
-		if (ret == 0) {
-			ts->irq_enabled = 1;
-			irq_enable_count = 1;
-			I("%s: irq register at qpio: %d\n", __func__, client->irq);
-#ifdef HX_SMART_WAKEUP
-			irq_set_irq_wake(client->irq, 1);
-#endif
-		} else {
-			E("%s: request_irq failed\n", __func__);
+			ret = request_threaded_irq(client->irq, NULL,
+					   himax_ts_thread,
+					   IRQF_TRIGGER_LOW | IRQF_ONESHOT,
+					   client->name, ts);
+
+		if (ret) {
+			dev_err(&client->dev, "request_threaded_irq failed: %d\n",
+				ret);
+			return ret;
 		}
+
+		ts->irq_enabled = 1;
+		irq_enable_count = 1;
+#ifdef HX_SMART_WAKEUP
+		ret = irq_set_irq_wake(client->irq, 1);
+		if (ret) {
+			dev_err(&client->dev, "failed to enable IRQ wake: %d\n",
+				ret);
+			return ret;
+		}
+		ts->irq_wake_enabled = true;
+#endif
+		dev_info(&client->dev, "Himax IRQ registered: %d\n",
+			 client->irq);
 	} else {
-		I("%s: client->irq is empty, use polling mode.\n", __func__);
+		dev_info(&client->dev, "no IRQ, enabling polling mode\n");
 	}
 
-	if (!ts->use_irq) {/*if use polling mode need to disable HX_ESD_WORKAROUND function*/
+	if (!ts->use_irq) {
 		ts->himax_wq = create_singlethread_workqueue("himax_touch");
+		if (!ts->himax_wq)
+			return -ENOMEM;
 
 		INIT_WORK(&ts->work, himax_ts_work_func);
-
 		hrtimer_init(&ts->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 		ts->timer.function = himax_ts_timer_func;
 		hrtimer_start(&ts->timer, ktime_set(1, 0), HRTIMER_MODE_REL);
-		I("%s: polling mode enabled\n", __func__);
+		dev_info(&client->dev, "Himax polling mode enabled\n");
 	}
-	return ret;
+
+	return 0;
 }
 #endif
 #ifdef MTK
@@ -6647,116 +6682,157 @@ static int himax_parse_config(struct himax_ts_data *ts, struct himax_config *pda
 	return 0;
 }
 #endif
-static void himax_vk_parser(struct device_node *dt,
+static int himax_vk_parser(struct device_node *dt,
 				struct himax_i2c_platform_data *pdata)
 {
-	u32 data = 0;
-	uint8_t cnt = 0, i = 0;
-	uint32_t coords[4] = {0};
+	u32 data, coords[4];
+	u32 cnt = 0, i = 0;
 	struct device_node *node, *pp = NULL;
 	struct himax_virtual_key *vk;
+	int ret = 0;
 
 	node = of_parse_phandle(dt, "virtualkey", 0);
-	if (node == NULL) {
+	if (!node) {
+		if (of_find_property(dt, "virtualkey", NULL))
+			return -EINVAL;
 		I(" DT-No vk info in DT");
-		return;
-	} else {
-		while ((pp = of_get_next_child(node, pp)))
-			cnt++;
-		if (!cnt)
-			return;
-
-		vk = kzalloc(cnt * (sizeof *vk), GFP_KERNEL);
-		pp = NULL;
-		while ((pp = of_get_next_child(node, pp))) {
-			if (of_property_read_u32(pp, "idx", &data) == 0)
-				vk[i].index = data;
-			if (of_property_read_u32_array(pp, "range", coords, 4) == 0) {
-				vk[i].x_range_min = coords[0], vk[i].x_range_max = coords[1];
-				vk[i].y_range_min = coords[2], vk[i].y_range_max = coords[3];
-			} else
-				I(" range faile");
-			i++;
-		}
-		pdata->virtual_key = vk;
-		for (i = 0; i < cnt; i++)
-			I(" vk[%d] idx:%d x_min:%d, y_max:%d", i,pdata->virtual_key[i].index,
-				pdata->virtual_key[i].x_range_min, pdata->virtual_key[i].y_range_max);
+		return 0;
 	}
+
+	while ((pp = of_get_next_child(node, pp)))
+		cnt++;
+
+	if (!cnt) {
+		of_node_put(node);
+		return 0;
+	}
+
+	vk = kcalloc(cnt, sizeof(*vk), GFP_KERNEL);
+	if (!vk) {
+		of_node_put(node);
+		return -ENOMEM;
+	}
+
+	pp = NULL;
+	while ((pp = of_get_next_child(node, pp))) {
+		if (of_property_read_u32(pp, "idx", &data)) {
+			ret = -EINVAL;
+			goto err_put_child;
+		}
+		vk[i].index = data;
+
+		ret = of_property_read_u32_array(pp, "range", coords,
+						 ARRAY_SIZE(coords));
+		if (ret)
+			goto err_put_child;
+		if (coords[1] < coords[0] || coords[3] < coords[2]) {
+			ret = -EINVAL;
+			goto err_put_child;
+		}
+
+		vk[i].x_range_min = coords[0];
+		vk[i].x_range_max = coords[1];
+		vk[i].y_range_min = coords[2];
+		vk[i].y_range_max = coords[3];
+		i++;
+	}
+
+	of_node_put(node);
+	pdata->virtual_key = vk;
+	for (i = 0; i < cnt; i++)
+		I(" vk[%d] idx:%d x_min:%d, y_max:%d", i,
+		  pdata->virtual_key[i].index,
+		  pdata->virtual_key[i].x_range_min,
+		  pdata->virtual_key[i].y_range_max);
+
+	return 0;
+
+err_put_child:
+	of_node_put(pp);
+	of_node_put(node);
+	kfree(vk);
+	return ret;
 }
 
 static int himax_parse_dt(struct himax_ts_data *ts,
 				struct himax_i2c_platform_data *pdata)
 {
-	int rc, coords_size = 0;
-	uint32_t coords[4] = {0};
-	struct property *prop;
+	int rc;
+	u32 coords[4] = {0};
 	struct device_node *dt = ts->client->dev.of_node;
 	u32 data = 0;
 
-	prop = of_find_property(dt, "himax,panel-coords", NULL);
-	if (prop) {
-		coords_size = prop->length / sizeof(u32);
-		if (coords_size != 4)
-			D(" %s:Invalid panel coords size %d", __func__, coords_size);
-	}
+	if (!dt)
+		return -ENODEV;
 
-	if (of_property_read_u32_array(dt, "himax,panel-coords", coords, coords_size) == 0) {
-		pdata->abs_x_min = coords[0], pdata->abs_x_max = coords[1];
-		pdata->abs_y_min = coords[2], pdata->abs_y_max = coords[3];
-		I(" DT-%s:panel-coords = %d, %d, %d, %d\n", __func__, pdata->abs_x_min,
-				pdata->abs_x_max, pdata->abs_y_min, pdata->abs_y_max);
-	}
-
-	//pdata->abs_x_max =1680;//test
-	//pdata->abs_y_max =2880;//test
-	prop = of_find_property(dt, "himax,display-coords", NULL);
-	if (prop) {
-		coords_size = prop->length / sizeof(u32);
-		if (coords_size != 4)
-			D(" %s:Invalid display coords size %d", __func__, coords_size);
-	}
-	rc = of_property_read_u32_array(dt, "himax,display-coords", coords, coords_size);
-	if (rc && (rc != -EINVAL)) {
-		D(" %s:Fail to read display-coords %d\n", __func__, rc);
+	rc = of_property_read_u32_array(dt, "himax,panel-coords",
+					coords, ARRAY_SIZE(coords));
+	if (rc) {
+		dev_err(&ts->client->dev,
+			"failed to read panel-coords: %d\n", rc);
 		return rc;
 	}
-	pdata->screenWidth  = coords[1];//test
-	pdata->screenHeight = coords[3];//test
-	//pdata->screenWidth  = 1920;//test
-	//pdata->screenHeight = 1080;//test
-	I(" DT-%s:display-coords = (%d, %d)", __func__, pdata->screenWidth,
-		pdata->screenHeight);
+	if (coords[1] <= coords[0] || coords[3] <= coords[2])
+		return -EINVAL;
+
+	pdata->abs_x_min = coords[0];
+	pdata->abs_x_max = coords[1];
+	pdata->abs_y_min = coords[2];
+	pdata->abs_y_max = coords[3];
+
+	rc = of_property_read_u32_array(dt, "himax,display-coords",
+					coords, ARRAY_SIZE(coords));
+	if (rc) {
+		dev_err(&ts->client->dev,
+			"failed to read display-coords: %d\n", rc);
+		return rc;
+	}
+	if (coords[1] <= coords[0] || coords[3] <= coords[2])
+		return -EINVAL;
+
+	pdata->screenWidth = coords[1];
+	pdata->screenHeight = coords[3];
 
 	pdata->gpio_irq = of_get_named_gpio(dt, "himax,irq-gpio", 0);
+	if (pdata->gpio_irq == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
 	if (!gpio_is_valid(pdata->gpio_irq)) {
-		I(" DT:gpio_irq value is not valid\n");
+		dev_err(&ts->client->dev, "invalid irq GPIO: %d\n",
+			pdata->gpio_irq);
+		return -EINVAL;
 	}
 
 	pdata->gpio_reset = of_get_named_gpio(dt, "himax,rst-gpio", 0);
-	if (!gpio_is_valid(pdata->gpio_reset)) {
-		I(" DT:gpio_rst value is not valid\n");
-	}
+	if (pdata->gpio_reset == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
+	if (!gpio_is_valid(pdata->gpio_reset))
+		dev_warn(&ts->client->dev, "reset GPIO unavailable: %d\n",
+			 pdata->gpio_reset);
+
 	pdata->gpio_3v3_en = of_get_named_gpio(dt, "himax,3v3-gpio", 0);
-	if (!gpio_is_valid(pdata->gpio_3v3_en)) {
-		I(" DT:gpio_3v3_en value is not valid\n");
-	}
-	I(" DT:gpio_irq=%d, gpio_rst=%d, gpio_3v3_en=%d", pdata->gpio_irq, pdata->gpio_reset, pdata->gpio_3v3_en);
+	if (pdata->gpio_3v3_en == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
+	if (!gpio_is_valid(pdata->gpio_3v3_en))
+		dev_info(&ts->client->dev, "3v3 enable GPIO unavailable: %d\n",
+			 pdata->gpio_3v3_en);
 
 	if (of_property_read_u32(dt, "report_type", &data) == 0) {
+		if (data > PROTOCOL_TYPE_B)
+			return -EINVAL;
 		pdata->protocol_type = data;
-		I(" DT:protocol_type=%d", pdata->protocol_type);
 	}
 
 #if defined(CONFIG_TOUCHSCREEN_PROXIMITY)
-	if (of_property_read_u32(dt, "proximity_bytp_enable", &data) == 0) {
+	if (of_property_read_u32(dt, "proximity_bytp_enable", &data) == 0)
 		pdata->proximity_bytp_enable = data;
-		I(" DT:proximity_bytp_enable=%d", pdata->proximity_bytp_enable);
-	}
 #endif
-	himax_vk_parser(dt, pdata);
 
-	return 0;
+	rc = himax_vk_parser(dt, pdata);
+	if (rc)
+		dev_err(&ts->client->dev,
+			"failed to parse virtual keys: %d\n", rc);
+
+	return rc;
 }
 #endif
 
@@ -6817,6 +6893,8 @@ static int himax852xf_probe(struct i2c_client *client, const struct i2c_device_i
 	struct himax_ts_data *ts;
 	struct himax_i2c_platform_data *pdata;
 
+	HX_DRIVER_PROBE_Fial = 0;
+
 	//Check I2C functionality
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		E("%s: i2c check functionality error\n", __func__);
@@ -6850,46 +6928,42 @@ static int himax852xf_probe(struct i2c_client *client, const struct i2c_device_i
 	dev_set_name(ts->dev, HIMAX852xf_NAME);
 #endif
 
-		pdata = kzalloc(sizeof(*pdata), GFP_KERNEL);
-		if (pdata == NULL) {
-			err = -ENOMEM;
-			goto err_dt_platform_data_fail;
-		}	
 #ifdef CONFIG_OF
-	if (client->dev.of_node) { /*DeviceTree Init Platform_data*/
-		err = himax_parse_dt(ts, pdata);
-		if (err < 0) {
-			I(" pdata is NULL for DT\n");
-			goto err_alloc_dt_pdata_failed;
-		}
+	pdata = kzalloc(sizeof(*pdata), GFP_KERNEL);
+	if (!pdata) {
+		err = -ENOMEM;
+		goto err_dt_platform_data_fail;
+	}
+	if (!client->dev.of_node) {
+		err = -ENODEV;
+		goto err_alloc_dt_pdata_failed;
+	}
+
+	err = himax_parse_dt(ts, pdata);
+	if (err < 0) {
+		dev_err(&client->dev, "device-tree parsing failed: %d\n", err);
+		goto err_alloc_dt_pdata_failed;
 	}
 #else
-		pdata = client->dev.platform_data;
-		if (pdata == NULL) {
-			I(" pdata is NULL(dev.platform_data)\n");
-			goto err_get_platform_data_fail;
-		}
+	pdata = client->dev.platform_data;
+	if (!pdata) {
+		err = -EINVAL;
+		goto err_get_platform_data_fail;
+	}
 #endif
 #ifdef MTK
-	//Set device tree data
-	//Set panel coordinates
-	pdata->abs_x_min = hx_panel_coords[0], pdata->abs_x_max = hx_panel_coords[1];
-	pdata->abs_y_min = hx_panel_coords[2], pdata->abs_y_max = hx_panel_coords[3];
-	I(" %s:panel-coords = %d, %d, %d, %d\n", __func__, pdata->abs_x_min,
-			pdata->abs_x_max, pdata->abs_y_min, pdata->abs_y_max);
-
-	//Set display coordinates
-	pdata->screenWidth  = hx_display_coords[1];
+	// Preserve the legacy MTK platform-data overrides.
+	pdata->abs_x_min = hx_panel_coords[0];
+	pdata->abs_x_max = hx_panel_coords[1];
+	pdata->abs_y_min = hx_panel_coords[2];
+	pdata->abs_y_max = hx_panel_coords[3];
+	pdata->screenWidth = hx_display_coords[1];
 	pdata->screenHeight = hx_display_coords[3];
-	I(" %s:display-coords = (%d, %d)", __func__, pdata->screenWidth,
-	pdata->screenHeight);
-	//report type
 	pdata->protocol_type = report_type;
- 	//INT RST
- 	pdata->gpio_irq = GPIO_CTP_EINT_PIN;
- 	pdata->gpio_reset = GPIO_CTP_RST_PIN;
- 	
+	pdata->gpio_irq = GPIO_CTP_EINT_PIN;
+	pdata->gpio_reset = GPIO_CTP_RST_PIN;
 #endif
+
 	lct_pdata = pdata;	
 
 	i2c_client_point = client;
@@ -7015,10 +7089,6 @@ static int himax852xf_probe(struct i2c_client *client, const struct i2c_device_i
 	pdata->cable_config[0]             = 0x90;
 	pdata->cable_config[1]             = 0x00;
 
-	pdata->abs_x_max = 1200;
-	pdata->abs_y_max = 1920;
-	ts->pdata->abs_x_max = 1200;
-	ts->pdata->abs_y_max = 1920;
 
 	ts->suspended                      = false;
 #if defined(HX_USB_DETECT)	
@@ -7032,7 +7102,7 @@ static int himax852xf_probe(struct i2c_client *client, const struct i2c_device_i
 	err = himax_input_register(ts);
 	if (err) {
 		E("%s: Unable to register %s input device\n",
-			__func__, ts->input_dev->name);
+			__func__, ts->input_dev ? ts->input_dev->name : "unknown");
 		if (ts->input_dev) {
 			input_free_device(ts->input_dev);
 			ts->input_dev = NULL;
@@ -7071,29 +7141,30 @@ static int himax852xf_probe(struct i2c_client *client, const struct i2c_device_i
 #endif
 
 #if defined(CONFIG_TOUCHSCREEN_PROXIMITY)
-	if(pdata->proximity_bytp_enable)
-	ts->ts_wake_lock = wakeup_source_register(NULL, HIMAX852xf_NAME);
-
-	if (!ts->ts_wake_lock) {
-        err = -ENOMEM;
-        goto err_register_interrupt_failed;
-    }
+	if (pdata->proximity_bytp_enable) {
+		ts->ts_wake_lock =
+			wakeup_source_register(dev_name(&client->dev));
+		if (!ts->ts_wake_lock) {
+			err = -ENOMEM;
+			goto err_register_interrupt_failed;
+		}
+	}
 #endif
 #ifdef HX_SMART_WAKEUP
-	ts->SMWP_enable=0;
-	ts->ts_SMWP_wake_lock = wakeup_source_register(NULL, HIMAX852xf_NAME);
-
+	ts->SMWP_enable = 0;
+	ts->ts_SMWP_wake_lock =
+		wakeup_source_register(dev_name(&client->dev));
 	if (!ts->ts_SMWP_wake_lock) {
-        err = -ENOMEM;
-        goto err_register_interrupt_failed;
-    }
+		err = -ENOMEM;
+		goto err_register_interrupt_failed;
+	}
 #endif
-    ts->ts_flash_wake_lock = wakeup_source_register(NULL, HIMAX852xf_NAME);
-
+	ts->ts_flash_wake_lock =
+		wakeup_source_register(dev_name(&client->dev));
 	if (!ts->ts_flash_wake_lock) {
-        err = -ENOMEM;
-        goto err_register_interrupt_failed;
-    }
+		err = -ENOMEM;
+		goto err_register_interrupt_failed;
+	}
 
 #if defined(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_DEBUG)
 	himax_touch_proc_init();
@@ -7120,38 +7191,47 @@ HW_RESET_ACTIVATE = 0;
 return 0;
 
 err_register_interrupt_failed:
-if(ts->irq_enabled){
-		himax_int_enable(ts->client->irq,0);
-		free_irq(ts->client->irq, ts);
-	}
-if (!ts->use_irq){
+	himax_ts_release_irq(ts);
+	if (ts->himax_wq) {
 		hrtimer_cancel(&ts->timer);
 		destroy_workqueue(ts->himax_wq);
+		ts->himax_wq = NULL;
 	}
 #if defined(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_DEBUG)
 	himax_touch_proc_deinit();
 #endif
-wakeup_source_unregister(ts->ts_flash_wake_lock);
-ts->ts_flash_wake_lock = NULL;
+if (ts->ts_flash_wake_lock) {
+	wakeup_source_unregister(ts->ts_flash_wake_lock);
+	ts->ts_flash_wake_lock = NULL;
+}
 #ifdef HX_SMART_WAKEUP
+if (ts->ts_SMWP_wake_lock) {
 	wakeup_source_unregister(ts->ts_SMWP_wake_lock);
 	ts->ts_SMWP_wake_lock = NULL;
+}
 #endif
 #if defined(CONFIG_TOUCHSCREEN_PROXIMITY)
-	if(pdata->proximity_bytp_enable)
-		wakeup_source_unregister(ts->ts_wake_lock);
-	    ts->ts_wake_lock = NULL;
+if (ts->ts_wake_lock) {
+	wakeup_source_unregister(ts->ts_wake_lock);
+	ts->ts_wake_lock = NULL;
+}
 #endif
 #ifdef  HX_CHIP_STATUS_MONITOR
-	cancel_delayed_work_sync(&ts->himax_chip_monitor);
-	destroy_workqueue(ts->himax_chip_monitor_wq);
+	if (ts->himax_chip_monitor_wq) {
+		cancel_delayed_work_sync(&ts->himax_chip_monitor);
+		destroy_workqueue(ts->himax_chip_monitor_wq);
+		ts->himax_chip_monitor_wq = NULL;
+	}
 err_create_chip_monitor_wq_failed:
 #endif
 #ifdef CONFIG_FB
-	cancel_delayed_work_sync(&ts->work_att);
-	destroy_workqueue(ts->himax_att_wq);
+	if (ts->himax_att_wq) {
+		cancel_delayed_work_sync(&ts->work_att);
+		destroy_workqueue(ts->himax_att_wq);
+		ts->himax_att_wq = NULL;
+	}
 	if (fb_unregister_client(&ts->fb_notif))
-			I("Error occurred while unregistering fb_notifier.\n");
+		I("Error occurred while unregistering fb_notifier.\n");
 err_get_intr_bit_failed:
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
 	unregister_early_suspend(&ts->early_suspend);
@@ -7193,8 +7273,20 @@ err_get_platform_data_fail:
 		himax_gpio_power_deconfig(client, pdata);
 		gpio_power_configured = false;
 	}
-	kfree(pdata);
+	if (private_ts == ts)
+		private_ts = NULL;
+	if (i2c_client_point == client)
+		i2c_client_point = NULL;
+	if (lct_pdata == pdata)
+		lct_pdata = NULL;
+#ifdef CONFIG_OF
+	if (pdata) {
+		kfree(pdata->virtual_key);
+		kfree(pdata);
+	}
+#endif
 err_dt_platform_data_fail:
+	i2c_set_clientdata(client, NULL);
 	kfree(ts);
 
 err_alloc_data_failed:
@@ -7222,70 +7314,96 @@ static int himax852xf_remove(struct i2c_client *client)
 		return 0;
 
 	pdata = ts->pdata;
+	himax_ts_release_irq(ts);
 
-	if(ts->irq_enabled){
-		himax_int_enable(ts->client->irq,0);
-			free_irq(ts->client->irq, ts);
+	if (ts->himax_wq) {
+		hrtimer_cancel(&ts->timer);
+		destroy_workqueue(ts->himax_wq);
+		ts->himax_wq = NULL;
 	}
-	if (!ts->use_irq){
-			hrtimer_cancel(&ts->timer);
-			destroy_workqueue(ts->himax_wq);
-		}
 #if defined(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_DEBUG)
 	himax_touch_proc_deinit();
 #endif
-wakeup_source_unregister(ts->ts_flash_wake_lock);
-ts->ts_flash_wake_lock = NULL;
+	if (ts->ts_flash_wake_lock) {
+		wakeup_source_unregister(ts->ts_flash_wake_lock);
+		ts->ts_flash_wake_lock = NULL;
+	}
 #ifdef HX_SMART_WAKEUP
+	if (ts->ts_SMWP_wake_lock) {
 		wakeup_source_unregister(ts->ts_SMWP_wake_lock);
 		ts->ts_SMWP_wake_lock = NULL;
+	}
 #endif
 #if defined(CONFIG_TOUCHSCREEN_PROXIMITY)
-		if (pdata && pdata->proximity_bytp_enable)
-			wakeup_source_unregister(ts->ts_wake_lock);
+	if (ts->ts_wake_lock) {
+		wakeup_source_unregister(ts->ts_wake_lock);
 		ts->ts_wake_lock = NULL;
+	}
 #endif
 
-
-#ifdef HX_CHIP_STATUS_MONITOR	
+#ifdef HX_CHIP_STATUS_MONITOR
+	if (ts->himax_chip_monitor_wq) {
 		cancel_delayed_work_sync(&ts->himax_chip_monitor);
-	destroy_workqueue(ts->himax_chip_monitor_wq);
+		destroy_workqueue(ts->himax_chip_monitor_wq);
+		ts->himax_chip_monitor_wq = NULL;
+	}
 #endif
 #ifdef CONFIG_FB
+	if (ts->himax_att_wq) {
 		cancel_delayed_work_sync(&ts->work_att);
 		destroy_workqueue(ts->himax_att_wq);
-
-		if (fb_unregister_client(&ts->fb_notif))
-			I("Error occurred while unregistering fb_notifier.\n");
+		ts->himax_att_wq = NULL;
+	}
+	if (fb_unregister_client(&ts->fb_notif))
+		dev_warn(&client->dev, "error unregistering fb notifier\n");
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
-		unregister_early_suspend(&ts->early_suspend);
+	unregister_early_suspend(&ts->early_suspend);
 #endif
-		if (pdata && pdata->ts_pinctrl &&
-		    !IS_ERR(pdata->ts_pinctrl) &&
-		    pdata->pinctrl_state_release &&
-		    !IS_ERR(pdata->pinctrl_state_release))
-			pinctrl_select_state(pdata->ts_pinctrl,
-					     pdata->pinctrl_state_release);
-		himax_gpio_power_deconfig(client, pdata);
-		if (ts->input_dev) {
-			input_unregister_device(ts->input_dev);
-			ts->input_dev = NULL;
-		}
-#ifdef  HX_TP_PROC_FLASH_DUMP
+
+	if (pdata && pdata->ts_pinctrl &&
+	    !IS_ERR(pdata->ts_pinctrl) &&
+	    pdata->pinctrl_state_release &&
+	    !IS_ERR(pdata->pinctrl_state_release))
+		pinctrl_select_state(pdata->ts_pinctrl,
+				     pdata->pinctrl_state_release);
+
+	himax_gpio_power_deconfig(client, pdata);
+	if (ts->input_dev) {
+		input_unregister_device(ts->input_dev);
+		ts->input_dev = NULL;
+	}
+#ifdef HX_TP_PROC_FLASH_DUMP
+	if (ts->flash_wq) {
 		destroy_workqueue(ts->flash_wq);
+		ts->flash_wq = NULL;
+	}
+#endif
+
+	if (private_ts == ts)
+		private_ts = NULL;
+	if (i2c_client_point == client)
+		i2c_client_point = NULL;
+	if (lct_pdata == pdata)
+		lct_pdata = NULL;
+	i2c_set_clientdata(client, NULL);
+#ifdef CONFIG_OF
+	if (pdata) {
+		kfree(pdata->virtual_key);
+		kfree(pdata);
+	}
 #endif
 	kfree(ts);
+
 #ifdef MTK
-		if(gpDMABuf_va)
-		{
-			dma_free_coherent(&client->dev, 4096, gpDMABuf_va, (dma_addr_t)gpDMABuf_pa);
-			gpDMABuf_va = NULL;
-			gpDMABuf_pa = NULL;
-		}
+	if (gpDMABuf_va) {
+		dma_free_coherent(&client->dev, 4096, gpDMABuf_va,
+				  (dma_addr_t)gpDMABuf_pa);
+		gpDMABuf_va = NULL;
+		gpDMABuf_pa = NULL;
+	}
 #endif
 
 	return 0;
-
 }
 
 #ifdef QCT

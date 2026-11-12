@@ -77,7 +77,8 @@ int i2c_himax_write(struct i2c_client *client, uint8_t command, uint8_t *data, u
 	};
 
 	buf[0] = command;
-	memcpy(buf+1, data, length);
+	if (length)
+		memcpy(buf + 1, data, length);
 	
 	for (retry = 0; retry < toRetry; retry++) {
 		if (i2c_transfer(client->adapter, msg, 1) == 1)
