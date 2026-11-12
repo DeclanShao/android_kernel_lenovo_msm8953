@@ -10,6 +10,7 @@
 #define pr_fmt(fmt)	"%s: " fmt, __func__
 
 #include <linux/clk.h>
+#include <linux/kconfig.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/hrtimer.h>
@@ -5084,6 +5085,16 @@ void mdss_mdp_set_ot_limit(struct mdss_mdp_set_ot_params *params)
 exit:
 	return;
 }
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+int mdss_panel_get_boot_cfg(void)
+{
+	if (!mdss_res || !mdss_res->pan_cfg.init_done)
+		return -EPROBE_DEFER;
+
+	return mdss_res->pan_cfg.lk_cfg ? 1 : 0;
+}
+#endif
 
 static int mdss_mdp_cx_ctrl(struct mdss_data_type *mdata, int enable)
 {
