@@ -30,7 +30,8 @@
 //qijin add for compatible with the 2 FW of himax ,AUO and INX
 #define PANLE_NAME_AUO "auont51021 1200p video mode dsi panel"
 #define PANLE_NAME_INX "innont51021b 1200p video mode dsi panel"
-int panel_id_ret;
+/* 0: AUO, 1: INX, 2: unknown panel. */
+int panel_id_ret = 2;
 //qijin add end
 #endif
 
@@ -3100,7 +3101,10 @@ int mdss_dsi_panel_init(struct device_node *node,
 	int ndx)
 {
 	int rc = 0;
-	static const char *panel_name;
+	const char *panel_name;
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF)
+	int panel_id = 2;
+#endif
 	struct mdss_panel_info *pinfo;
 
 	if (!node || !ctrl_pdata) {
@@ -3119,18 +3123,13 @@ int mdss_dsi_panel_init(struct device_node *node,
 	} else {
 		pr_info("%s: Panel Name = %s\n", __func__, panel_name);
 		strlcpy(&pinfo->panel_name[0], panel_name, MDSS_MAX_PANEL_LEN);
-#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF)
-//qijin add for compatible with the 2 FW of himax ,AUO and INX
-        if (0 == strcmp(panel_name,PANLE_NAME_AUO)) {
-            panel_id_ret = 0;
-        }else if(0 == strcmp(panel_name,PANLE_NAME_INX)){
-            panel_id_ret = 1;
-        }else{
-            panel_id_ret = 2;
-        }
-//qijin add end
-#endif
 	}
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF)
+	/* Unknown panels must never inherit the AUO (zero) identifier. */
+	WRITE_ONCE(panel_id_ret, panel_id);
+	pr_info("%s: Himax panel id = %d (%s)\n", __func__, panel_id,
+		panel_name ? panel_name : "unknown");
+#endif
 	rc = mdss_panel_parse_dt(node, ctrl_pdata);
 	if (rc) {
 		pr_err("%s:%d panel dt parse failed\n", __func__, __LINE__);
