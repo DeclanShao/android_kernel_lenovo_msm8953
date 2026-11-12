@@ -1,0 +1,1 @@
+obj-$(CONFIG_INPUT_IQS263) += iqs263.o
