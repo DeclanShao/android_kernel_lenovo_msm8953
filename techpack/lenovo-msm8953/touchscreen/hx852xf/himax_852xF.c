@@ -7184,7 +7184,7 @@ static int himax852xf_probe(struct i2c_client *client, const struct i2c_device_i
 #if defined(CONFIG_TOUCHSCREEN_PROXIMITY)
 	if (pdata->proximity_bytp_enable) {
 		ts->ts_wake_lock =
-			wakeup_source_register(dev_name(&client->dev));
+			wakeup_source_register(&client->dev, dev_name(&client->dev));
 		if (!ts->ts_wake_lock) {
 			err = -ENOMEM;
 			goto err_register_interrupt_failed;
@@ -7194,14 +7194,14 @@ static int himax852xf_probe(struct i2c_client *client, const struct i2c_device_i
 #ifdef HX_SMART_WAKEUP
 	ts->SMWP_enable = 0;
 	ts->ts_SMWP_wake_lock =
-		wakeup_source_register(dev_name(&client->dev));
+		wakeup_source_register(&client->dev, dev_name(&client->dev));
 	if (!ts->ts_SMWP_wake_lock) {
 		err = -ENOMEM;
 		goto err_register_interrupt_failed;
 	}
 #endif
 	ts->ts_flash_wake_lock =
-		wakeup_source_register(dev_name(&client->dev));
+		wakeup_source_register(&client->dev, dev_name(&client->dev));
 	if (!ts->ts_flash_wake_lock) {
 		err = -ENOMEM;
 		goto err_register_interrupt_failed;
