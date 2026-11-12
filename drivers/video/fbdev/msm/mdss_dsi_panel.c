@@ -2,6 +2,7 @@
 /* Copyright (c) 2012-2021, The Linux Foundation. All rights reserved. */
 
 #include <linux/module.h>
+#include <linux/compiler.h>
 #include <linux/interrupt.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
