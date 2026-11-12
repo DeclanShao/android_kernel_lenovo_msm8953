@@ -2,6 +2,7 @@
 /* Copyright (c) 2012-2021, The Linux Foundation. All rights reserved. */
 
 #include <linux/module.h>
+#include <linux/kconfig.h>
 #include <linux/interrupt.h>
 #include <linux/spinlock.h>
 #include <linux/delay.h>
@@ -34,6 +35,10 @@ static struct mdss_dsi_data *mdss_dsi_res;
 #define DSI_ENABLE_PC_LATENCY PM_QOS_DEFAULT_VALUE
 
 static struct pm_qos_request mdss_dsi_pm_qos_request;
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+extern int mdss_dsi_panel_lcden_gpio_ctrl(struct mdss_dsi_ctrl_pdata *ctrl, int on);
+#endif
 
 void mdss_dump_dsi_debug_bus(u32 bus_dump_flag,
 	u32 **dump_mem)
@@ -459,6 +464,18 @@ static int mdss_dsi_panel_power_ctrl(struct mdss_panel_data *pdata,
 	 */
 	if (pdata->panel_info.dynamic_switch_pending)
 		return 0;
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	if (power_state == MDSS_PANEL_POWER_ON ||
+		power_state == MDSS_PANEL_POWER_OFF ||
+		power_state == MDSS_PANEL_POWER_LCD_DISABLED) {
+		ret = mdss_dsi_panel_lcden_gpio_ctrl(
+			container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data), power_state == MDSS_PANEL_POWER_ON);
+		if (ret)
+			return ret;
+	}
+#endif
 
 	switch (power_state) {
 	case MDSS_PANEL_POWER_OFF:
