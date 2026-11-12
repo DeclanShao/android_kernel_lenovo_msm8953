@@ -7605,10 +7605,14 @@ if(HX_ON_HAND_SHAKING)//chip on hand shaking,wait hand shaking
 	//ts->first_pressed = 0;
 	atomic_set(&ts->suspend_mode, 1);
 	ts->pre_finger_mask = 0;
+	ret = pinctrl_select_state(ts->pdata->ts_pinctrl,
+				   ts->pdata->pinctrl_state_suspend);
+	if (ret)
+		dev_err(ts->dev, "failed to select suspend pinctrl state: %d\n",
+			ret);
+
 	if (ts->pdata->powerOff3V3 && ts->pdata->power)
 		ts->pdata->power(0);
-	pinctrl_select_state(ts->pdata->ts_pinctrl,
-				ts->pdata->pinctrl_state_suspend);
 	
 	return 0;
 }
@@ -7649,8 +7653,13 @@ static int himax852xf_resume(struct device *dev)
 	}
 #endif
 
-	pinctrl_select_state(ts->pdata->ts_pinctrl,
-					ts->pdata->pinctrl_state_active);
+	ret = pinctrl_select_state(ts->pdata->ts_pinctrl,
+				   ts->pdata->pinctrl_state_active);
+	if (ret) {
+		dev_err(ts->dev, "failed to select active pinctrl state: %d\n",
+			ret);
+		return ret;
+	}
 
 	if (ts->pdata->powerOff3V3 && ts->pdata->power)
 		ts->pdata->power(1);
@@ -7851,10 +7860,14 @@ if(HX_ON_HAND_SHAKING)//chip on hand shaking,wait hand shaking
 	//ts->first_pressed = 0;
 	atomic_set(&ts->suspend_mode, 1);
 	ts->pre_finger_mask = 0;
+	ret = pinctrl_select_state(ts->pdata->ts_pinctrl,
+				   ts->pdata->pinctrl_state_suspend);
+	if (ret)
+		dev_err(ts->dev, "failed to select suspend pinctrl state: %d\n",
+			ret);
+
 	if (ts->pdata->powerOff3V3 && ts->pdata->power)
 		ts->pdata->power(0);
-	pinctrl_select_state(ts->pdata->ts_pinctrl,
-				ts->pdata->pinctrl_state_suspend);
 
 	return;
 }
@@ -7876,8 +7889,11 @@ static void himax852xf_resume(struct early_suspend *h)
 		return;
 	}
 	I("%s: enter \n", __func__);
-	pinctrl_select_state(ts->pdata->ts_pinctrl,
-					ts->pdata->pinctrl_state_active);
+	ret = pinctrl_select_state(ts->pdata->ts_pinctrl,
+				   ts->pdata->pinctrl_state_active);
+	if (ret)
+		dev_err(ts->dev, "failed to select active pinctrl state: %d\n",
+			ret);
 
 	if (ts->pdata->powerOff3V3 && ts->pdata->power)
 		ts->pdata->power(1);
