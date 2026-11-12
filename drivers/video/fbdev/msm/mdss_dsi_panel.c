@@ -2,6 +2,7 @@
 /* Copyright (c) 2012-2021, The Linux Foundation. All rights reserved. */
 
 #include <linux/module.h>
+#include <linux/kconfig.h>
 #include <linux/compiler.h>
 #include <linux/interrupt.h>
 #include <linux/of.h>
@@ -22,6 +23,10 @@
 #include "mdss_dsi.h"
 #include "mdss_dba_utils.h"
 #include "mdss_debug.h"
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+#include "mdss_panel.h"
+#endif
 #include "mdss_livedisplay.h"
 
 #define DT_CMD_HDR 6
@@ -228,7 +233,11 @@ void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
 	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
 }
 
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+static char led_pwm1[2] = {0x9f, 0x0}; /* DTYPE_DCS_WRITE1 */
+#else
 static char led_pwm1[2] = {0x51, 0x0};	/* DTYPE_DCS_WRITE1 */
+#endif
 static struct dsi_cmd_desc backlight_cmd = {
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(led_pwm1)},
 	led_pwm1
@@ -246,6 +255,11 @@ static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 	}
 
 	pr_debug("%s: level=%d\n", __func__, level);
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	/* Match the factory TB8703 panel brightness calibration. */
+	if (level != 1)
+		level = level * 6 / 10;
+#endif
 
 	led_pwm1[1] = (unsigned char)level;
 
@@ -2599,6 +2613,46 @@ void mdss_dsi_unregister_bl_settings(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 		led_trigger_unregister_simple(bl_led_trigger);
 }
 #endif
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+int mdss_dsi_panel_lcden_gpio_ctrl(struct mdss_dsi_ctrl_pdata *ctrl_pdata,
+		int on)
+{
+	int rc;
+
+	if (!ctrl_pdata || !gpio_is_valid(ctrl_pdata->lcden_gpio))
+		return -EINVAL;
+
+	if (on) {
+		if (!ctrl_pdata->lcden_gpio_requested) {
+			rc = gpio_request(ctrl_pdata->lcden_gpio, "lcd_en");
+			if (rc) {
+				pr_err("%s: request lcd_en gpio failed, rc=%d\n",
+					__func__, rc);
+				return rc;
+			}
+			ctrl_pdata->lcden_gpio_requested = true;
+		}
+
+		rc = gpio_direction_output(ctrl_pdata->lcden_gpio, 1);
+		if (rc) {
+			pr_err("%s: unable to set lcd_en gpio, rc=%d\n",
+				__func__, rc);
+			gpio_free(ctrl_pdata->lcden_gpio);
+			ctrl_pdata->lcden_gpio_requested = false;
+			return rc;
+		}
+		gpio_set_value(ctrl_pdata->lcden_gpio, 1);
+		mdelay(30);
+	} else if (ctrl_pdata->lcden_gpio_requested) {
+		gpio_set_value(ctrl_pdata->lcden_gpio, 0);
+		gpio_free(ctrl_pdata->lcden_gpio);
+		ctrl_pdata->lcden_gpio_requested = false;
+	}
+
+	return 0;
+}
+#endif
+
 static int mdss_dsi_panel_timing_from_dt(struct device_node *np,
 		struct dsi_panel_timing *pt,
 		struct mdss_panel_data *panel_data)
@@ -2901,6 +2955,13 @@ static int mdss_panel_parse_dt(struct device_node *np,
 		else if (!strcmp(data, "vflip"))
 			pinfo->panel_orientation = MDP_FLIP_UD;
 	}
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	ctrl_pdata->lcden_gpio = of_get_named_gpio(np,
+			"qcom,mdss-dsi-lcden-ctrl", 0);
+	if (ctrl_pdata->lcden_gpio == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
+#endif
 
 	rc = of_property_read_u32(np, "qcom,mdss-brightness-max-level", &tmp);
 	pinfo->brightness_max = (!rc ? tmp : MDSS_MAX_BL_BRIGHTNESS);
