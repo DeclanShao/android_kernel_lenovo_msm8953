@@ -1027,7 +1027,7 @@ void himax_touch_information(void)
 	char data[12] = {0};
 	int panel_id = READ_ONCE(panel_id_ret);
 	
-	I("%s:IC_TYPE =%d\n", __func__,IC_TYPE);
+	I("%s:IC_TYPE =%d panel_id=%d\n", __func__,IC_TYPE,panel_id);
 	
 	if(IC_TYPE == HX_85XX_ES_SERIES_PWON)
 		{
@@ -1347,7 +1347,7 @@ static int i_update_FW(void)
 	int fullFileLength = sizeof(i_CTPM_FW); 
 	int fullFileLength_2 = sizeof(i_CTPM_FW_2); 
 	if (panel_id != 0 && panel_id != 1) {
-		E("%s: unknown panel id %d; skip firmware update\\n",
+		E("%s: unknown panel id %d; skip firmware update\n",
 			__func__, panel_id);
 		return 0;
 	}
