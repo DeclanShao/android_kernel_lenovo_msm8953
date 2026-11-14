@@ -442,11 +442,19 @@ static int mdss_dsi_panel_power_ctrl(struct mdss_panel_data *pdata,
 {
 	int ret = 0;
 	struct mdss_panel_info *pinfo;
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+    struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+#endif
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
 		return -EINVAL;
 	}
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
+#endif
 
 	pinfo = &pdata->panel_info;
 	pr_debug("%s: cur_power_state=%d req_power_state=%d\n", __func__,
@@ -456,10 +464,6 @@ static int mdss_dsi_panel_power_ctrl(struct mdss_panel_data *pdata,
 		pr_debug("%s: no change needed\n", __func__);
 		return 0;
 	}
-
-#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
-	mdss_dsi_panel_lcden_gpio_ctrl(ctrl_pdata, power_state);
-#endif
 
 	/*
 	 * If a dynamic mode switch is pending, the regulators should not
@@ -471,12 +475,18 @@ static int mdss_dsi_panel_power_ctrl(struct mdss_panel_data *pdata,
 	switch (power_state) {
 	case MDSS_PANEL_POWER_OFF:
 	case MDSS_PANEL_POWER_LCD_DISABLED:
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+		mdss_dsi_panel_lcden_gpio_ctrl(ctrl_pdata, 0);
+#endif
 		/* if LCD has not been disabled, then disable it now */
 		if ((pinfo->panel_power_state != MDSS_PANEL_POWER_LCD_DISABLED)
 		     && (pinfo->panel_power_state != MDSS_PANEL_POWER_OFF))
 			ret = mdss_dsi_panel_power_off(pdata);
 		break;
 	case MDSS_PANEL_POWER_ON:
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+		mdss_dsi_panel_lcden_gpio_ctrl(ctrl_pdata, 1);
+#endif
 		if (mdss_dsi_is_panel_on_lp(pdata))
 			ret = mdss_dsi_panel_power_lp(pdata, false);
 		else
@@ -4715,6 +4725,22 @@ int dsi_panel_device_register(struct platform_device *ctrl_pdev,
 
 	pr_info("%s: Continuous splash %s\n", __func__,
 		pinfo->cont_splash_enabled ? "enabled" : "disabled");
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	if (gpio_is_valid(ctrl_pdata->lcden_gpio)) {
+		rc = devm_gpio_request_one(&ctrl_pdev->dev,
+					   ctrl_pdata->lcden_gpio,
+					   pinfo->cont_splash_enabled ?
+					   GPIOF_OUT_INIT_HIGH :
+					   GPIOF_OUT_INIT_LOW,
+					   "lcd_en");
+		if (rc) {
+			pr_err("%s: request lcd_en gpio %d failed, rc=%d\n",
+			       __func__, ctrl_pdata->lcden_gpio, rc);
+			return rc;
+		}
+	}
+#endif
 
 	rc = mdss_register_panel(ctrl_pdev, &(ctrl_pdata->panel_data));
 	if (rc) {
