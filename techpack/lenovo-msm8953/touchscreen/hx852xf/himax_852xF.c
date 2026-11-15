@@ -15,6 +15,8 @@
 
 #include "himax_852xF.h"
 #include <linux/compiler.h>
+#include <linux/kernfs.h>
+#include <linux/limits.h>
 
 #define SUPPORT_FINGER_DATA_CHECKSUM 0x0F
 #define TS_WAKE_LOCK_TIMEOUT		(2 * HZ)
@@ -63,6 +65,10 @@ static int		HX_Y_RES                  = 0;
 static int		HX_MAX_PT                 = 0;
 static bool		HX_XY_REVERSE             = false;
 static bool		HX_INT_IS_EDGE            = false;
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
+static struct proc_dir_entry *himax_dt2w_proc_dir;
+#endif
 
 static unsigned int		FW_VER_MAJ_FLASH_ADDR;
 static unsigned int 	FW_VER_MAJ_FLASH_LENG;
@@ -2519,8 +2525,8 @@ static int himax_parse_wake_event(struct himax_ts_data *ts)
 #endif
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
-static ssize_t double_tap_wake_show(struct device *dev,
-					 struct device_attribute *attr, char *buf)
+static ssize_t enable_dt2w_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
 {
 	struct himax_ts_data *ts = dev_get_drvdata(dev);
 
@@ -2528,9 +2534,9 @@ static ssize_t double_tap_wake_show(struct device *dev,
 			 READ_ONCE(ts->SMWP_enable) ? 1 : 0);
 }
 
-static ssize_t double_tap_wake_store(struct device *dev,
-				      struct device_attribute *attr,
-				      const char *buf, size_t count)
+static ssize_t enable_dt2w_store(struct device *dev,
+				 struct device_attribute *attr,
+				 const char *buf, size_t count)
 {
 	struct himax_ts_data *ts = dev_get_drvdata(dev);
 	unsigned long enable;
@@ -2550,8 +2556,64 @@ static ssize_t double_tap_wake_store(struct device *dev,
 
 	return count;
 }
-static DEVICE_ATTR(double_tap_wake, 0644,
-		   double_tap_wake_show, double_tap_wake_store);
+static DEVICE_ATTR(enable_dt2w, 0644, enable_dt2w_show, enable_dt2w_store);
+
+static int himax_dt2w_proc_init(struct device *dev)
+{
+	char *sysfs_path;
+	char *link_target;
+	int ret;
+
+	if (!dev->kobj.sd)
+		return -ENODEV;
+
+	sysfs_path = kzalloc(PATH_MAX, GFP_KERNEL);
+	link_target = kzalloc(PATH_MAX, GFP_KERNEL);
+	if (!sysfs_path || !link_target) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	ret = kernfs_path(dev->kobj.sd, sysfs_path, PATH_MAX);
+	if (ret < 0)
+		goto out;
+
+	ret = snprintf(link_target, PATH_MAX, "/sys%s/enable_dt2w",
+		       sysfs_path);
+	if (ret < 0 || ret >= PATH_MAX) {
+		ret = -ENAMETOOLONG;
+		goto out;
+	}
+
+	himax_dt2w_proc_dir = proc_mkdir("touchpanel", NULL);
+	if (!himax_dt2w_proc_dir) {
+		ret = -EEXIST;
+		goto out;
+	}
+
+	if (!proc_symlink("enable_dt2w", himax_dt2w_proc_dir, link_target)) {
+		remove_proc_entry("touchpanel", NULL);
+		himax_dt2w_proc_dir = NULL;
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	ret = 0;
+out:
+	kfree(link_target);
+	kfree(sysfs_path);
+	return ret;
+}
+
+static void himax_dt2w_proc_deinit(void)
+{
+	if (!himax_dt2w_proc_dir)
+		return;
+
+	remove_proc_entry("enable_dt2w", himax_dt2w_proc_dir);
+	remove_proc_entry("touchpanel", NULL);
+	himax_dt2w_proc_dir = NULL;
+}
 
 #endif
 
@@ -7234,10 +7296,16 @@ HW_RESET_ACTIVATE = 0;
 		goto err_register_interrupt_failed;
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
-	err = device_create_file(&client->dev, &dev_attr_double_tap_wake);
+	err = device_create_file(&client->dev, &dev_attr_enable_dt2w);
 	if (err) {
-		dev_err(&client->dev, "failed to create double_tap_wake: %d\n", err);
-		goto err_register_interrupt_failed;
+		dev_warn(&client->dev, "failed to create enable_dt2w sysfs node: %d\n",
+			 err);
+	} else {
+		err = himax_dt2w_proc_init(&client->dev);
+		if (err)
+			dev_warn(&client->dev,
+				 "failed to create /proc/touchpanel/enable_dt2w: %d\n",
+				 err);
 	}
 #endif
 
@@ -7245,7 +7313,8 @@ return 0;
 
 err_register_interrupt_failed:
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
-	device_remove_file(&client->dev, &dev_attr_double_tap_wake);
+	himax_dt2w_proc_deinit();
+	device_remove_file(&client->dev, &dev_attr_enable_dt2w);
 #endif
 	himax_ts_release_irq(ts);
 	if (ts->himax_wq) {
@@ -7371,7 +7440,8 @@ static int himax852xf_remove(struct i2c_client *client)
 
 	pdata = ts->pdata;
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
-	device_remove_file(&client->dev, &dev_attr_double_tap_wake);
+	himax_dt2w_proc_deinit();
+	device_remove_file(&client->dev, &dev_attr_enable_dt2w);
 #endif
 	himax_ts_release_irq(ts);
 
