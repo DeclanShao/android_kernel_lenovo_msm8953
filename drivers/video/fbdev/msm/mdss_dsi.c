@@ -486,8 +486,15 @@ static int mdss_dsi_panel_power_ctrl(struct mdss_panel_data *pdata,
 	case MDSS_PANEL_POWER_ON:
 #if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
 		mdss_dsi_panel_lcden_gpio_ctrl(ctrl_pdata, 1);
-#endif
+		/* LCD_DISABLED is not a low-power state.
+		 * Its regulators have been turned off, so a full
+		  * panel power-on sequence is required.
+		*/
+		if (pinfo->panel_power_state == MDSS_PANEL_POWER_LP1 ||
+		    pinfo->panel_power_state == MDSS_PANEL_POWER_LP2)
+#else
 		if (mdss_dsi_is_panel_on_lp(pdata))
+#endif
 			ret = mdss_dsi_panel_power_lp(pdata, false);
 		else
 			ret = mdss_dsi_panel_power_on(pdata);
