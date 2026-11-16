@@ -267,7 +267,7 @@
 				};
 
 				config {
-					pins = "gpio64";
+					pins = "gpio131";
 					drive-strength = <2>;
 					bias-disable;
 				};
