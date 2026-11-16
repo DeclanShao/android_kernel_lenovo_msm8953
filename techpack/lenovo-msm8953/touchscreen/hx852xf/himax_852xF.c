@@ -7258,7 +7258,9 @@ static int himax852xf_probe(struct i2c_client *client, const struct i2c_device_i
 	}
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HIMAX_HX852XF_SMART_WAKEUP)
-	ts->SMWP_enable = 0;
+	/* Enable double-tap wake by default. */
+	WRITE_ONCE(ts->gesture_cust_en[0], 1);
+	WRITE_ONCE(ts->SMWP_enable, 1);
 	ts->ts_SMWP_wake_lock =
 		wakeup_source_register(&client->dev, dev_name(&client->dev));
 	if (!ts->ts_SMWP_wake_lock) {
