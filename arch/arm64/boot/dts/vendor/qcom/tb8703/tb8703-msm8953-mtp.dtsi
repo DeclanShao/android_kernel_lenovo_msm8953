@@ -98,6 +98,7 @@
 		pinctrl-2 = <&ts_release>;
 		interrupt-parent = <&tlmm>;
 		interrupts = <65 0x2>;
+		wakeup-source;
 		vcc_i2c-supply = <&pm8953_l6>;
 		himax,panel-coords   	= <0 1200 0 1920>;
 		himax,display-coords 	= <0 1200 0 1920>;

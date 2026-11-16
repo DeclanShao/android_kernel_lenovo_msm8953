@@ -3423,12 +3423,11 @@ static irqreturn_t himax_ts_thread(int irq, void *ptr)
 		if(ret_event)
 			{
 				I(" %s SMART WAKEUP KEY event %x press\n",__func__,KEY_EVENT);
-				input_report_key(private_ts->input_dev, KEY_EVENT, 1);
-				input_sync(private_ts->input_dev);
-				//msleep(100);
+				input_report_key(ts->input_dev, KEY_EVENT, 1);
+				input_sync(ts->input_dev);
 				I(" %s SMART WAKEUP KEY event %x release\n",__func__,KEY_EVENT);
-				input_report_key(private_ts->input_dev, KEY_EVENT, 0);
-				input_sync(private_ts->input_dev);
+				input_report_key(ts->input_dev, KEY_EVENT, 0);
+				input_sync(ts->input_dev);
 				FAKE_POWER_KEY_SEND=true;
 
 				//I("gest_start_x= %d, gest_start_y= %d, gest_end_x= %d, gest_end_y= %d\n",gest_start_x,gest_start_y,

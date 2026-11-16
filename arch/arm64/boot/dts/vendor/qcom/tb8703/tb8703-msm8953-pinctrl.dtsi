@@ -230,6 +230,8 @@
 
 				config {
 					drive-strength = <16>;
+					/* Keep the active-low IRQ line pulled high in DT2W mode. */
+					bias-pull-up;
 				};
 			};
 		};
