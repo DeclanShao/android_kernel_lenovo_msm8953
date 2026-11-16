@@ -13,6 +13,16 @@
 &spmi_bus {
 	qcom,pmi8950@2 {
 		qpnp_smbcharger: qcom,qpnp-smbcharger {
+			qcom,rerun-apsd-on-mismatch;
+			qcom,set-dp-dm-low-on-rerun;
+			qcom,hvdcp-notify-ms = <2500>;
+			qcom,keep-hvdcp-disabled-on-otg-exit;
+			qcom,keep-hvdcp-disabled-on-pulsing-exit;
+			qcom,cold-temp-offset = <30>;
+			qcom,force-5v-only;
+			qcom,disable-hvdcp3-detection;
+			qcom,disable-restart-workaround;
+			qcom,parallel-charging-disabled;
 			qcom,float-voltage-mv = <4350>;
 			qcom,thermal-mitigation = <1500 1100 900 700 0>;
 			/delete-property/ qcom,parallel-usb-min-current-ma;
@@ -22,6 +32,8 @@
 		};
 
 		qpnp_fg: qcom,fg {
+			qcom,use-monotonic-soc-when-profile-unavailable;
+			qcom,fg-delta-soc-is-raw;
 			qcom,resume-soc = <99>;
 			qcom,resume-soc-raw = <254>;
 			qcom,fg-delta-soc = <1>;
