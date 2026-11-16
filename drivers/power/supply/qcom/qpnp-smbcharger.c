@@ -5026,7 +5026,7 @@ static int smbchg_prepare_for_pulsing(struct smbchg_chip *chip)
 	 * DCP will switch to HVDCP in this time by removing the short
 	 * between DP DM
 	 */
-	msleep(HVDCP_NOTIFY_MS);
+	msleep(chip->hvdcp_notify_ms);
 	/*
 	 * Check if the same hvdcp session is in progress. src_det should be
 	 * high and the usb type should be none since APSD was disabled
@@ -5319,7 +5319,7 @@ static int smbchg_prepare_for_pulsing_lite(struct smbchg_chip *chip)
 	 * DCP will switch to HVDCP in this time by removing the short
 	 * between DP DM
 	 */
-	msleep(HVDCP_NOTIFY_MS);
+	msleep(chip->hvdcp_notify_ms);
 	/*
 	 * Check if the same hvdcp session is in progress. src_det should be
 	 * high and the usb type should be none since APSD was disabled
