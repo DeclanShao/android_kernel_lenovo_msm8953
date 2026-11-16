@@ -146,6 +146,14 @@ struct smbchg_chip {
 	bool				force_aicl_rerun;
 	bool				hvdcp3_supported;
 	bool				allow_hvdcp3_detection;
+	bool				rerun_apsd_on_mismatch;
+	bool				set_dp_dm_low_on_rerun;
+	bool				keep_hvdcp_disabled_on_otg_exit;
+	bool				keep_hvdcp_disabled_on_pulsing_exit;
+	bool				force_5v_only;
+	bool				parallel_charging_disabled;
+	u32				hvdcp_notify_ms;
+	u32				cold_temp_offset;
 	bool				restricted_charging;
 	bool				skip_usb_suspend_for_fake_battery;
 	bool				hvdcp_not_supported;
@@ -420,11 +428,7 @@ module_param_named(
 	debug_mask, smbchg_debug_mask, int, 00600
 );
 
-#ifdef CONFIG_MACH_LENOVO_TB8703
-static int smbchg_parallel_en = 0;
-#else
 static int smbchg_parallel_en = 1;
-#endif
 module_param_named(
 	parallel_en, smbchg_parallel_en, int, 00600
 );
@@ -1038,10 +1042,8 @@ static int get_prop_batt_temp(struct smbchg_chip *chip)
 		pr_smb(PR_STATUS, "Couldn't get temperature rc = %d\n", rc);
 		temp = DEFAULT_BATT_TEMP;
 	}
-#ifdef CONFIG_MACH_LENOVO_TB8703
 	if (temp < -15)
-		temp -= 30;
-#endif
+		temp -= (int)chip->cold_temp_offset;
 	return temp;
 }
 
@@ -2223,6 +2225,7 @@ static bool smbchg_is_parallel_usb_ok(struct smbchg_chip *chip,
 	int usb_icl_ma = get_effective_result_locked(chip->usb_icl_votable);
 
 	if (!parallel_psy || !smbchg_parallel_en
+			|| chip->parallel_charging_disabled
 			|| !chip->parallel_charger_detected) {
 		pr_smb(PR_STATUS, "Parallel charging not enabled\n");
 		return false;
@@ -3517,42 +3520,43 @@ static void smbchg_external_power_changed(struct power_supply *psy)
 							rc);
 	}
 
-#ifdef CONFIG_MACH_LENOVO_TB8703
-	if (chip->usb_psy) {
+	if (chip->rerun_apsd_on_mismatch && chip->usb_psy) {
 		rc = power_supply_get_property(chip->usb_psy,
-				POWER_SUPPLY_PROP_TYPE, &prop);
-		read_usb_type(chip, &usb_type_name, &usb_supply_type);
-		pr_info("rc: %d, usb_supply_type: %d, is_usb_present: %d\n",
-				rc, usb_supply_type, is_usb_present(chip));
-		if (!rc && usb_supply_type == POWER_SUPPLY_TYPE_USB &&
-				prop.intval != POWER_SUPPLY_TYPE_USB &&
-				is_usb_present(chip)) {
-			pr_smb(PR_MISC,
-				"Incorrect charger type detected - rerun APSD\n");
-			chip->hvdcp_3_det_ignore_uv = true;
-			pr_smb(PR_MISC, "setting usb psy dp=f dm=f\n");
-			rc = set_usb_psy_dp_dm(chip,
-					POWER_SUPPLY_DP_DM_DPF_DMF);
-			if (rc < 0)
-				pr_err("Failed to set USB DP/DM state rc=%d\n", rc);
-			rc = rerun_apsd(chip);
-			if (rc)
-				pr_err("APSD re-run failed\n");
-			chip->hvdcp_3_det_ignore_uv = false;
-			if (!is_src_detect_high(chip)) {
-				pr_smb(PR_MISC,
-					"Charger removed - force removal\n");
-				update_usb_status(chip, is_usb_present(chip), true);
-				return;
-			}
-
+				POWER_SUPPLY_PROP_REAL_TYPE, &prop);
+		if (!rc) {
 			read_usb_type(chip, &usb_type_name, &usb_supply_type);
-			if (usb_supply_type == POWER_SUPPLY_TYPE_USB_DCP)
-				schedule_delayed_work(&chip->hvdcp_det_work,
-					msecs_to_jiffies(HVDCP_NOTIFY_MS));
+			if (usb_supply_type == POWER_SUPPLY_TYPE_USB &&
+					prop.intval != POWER_SUPPLY_TYPE_USB &&
+					is_usb_present(chip)) {
+				pr_smb(PR_MISC,
+					"Incorrect charger type detected - rerun APSD\n");
+				if (chip->set_dp_dm_low_on_rerun) {
+					rc = set_usb_psy_dp_dm(chip,
+						POWER_SUPPLY_DP_DM_DPF_DMF);
+					if (rc < 0)
+						pr_err("Failed to set USB DP/DM state rc=%d\n", rc);
+				}
+				rc = rerun_apsd(chip);
+				if (rc)
+					pr_err("APSD re-run failed rc=%d\n", rc);
+				if (!is_src_detect_high(chip)) {
+					pr_smb(PR_MISC,
+						"Charger removed - force removal\n");
+					update_usb_status(chip,
+						is_usb_present(chip), true);
+					return;
+				}
+				read_usb_type(chip, &usb_type_name,
+						&usb_supply_type);
+				if (usb_supply_type == POWER_SUPPLY_TYPE_USB_DCP) {
+					cancel_delayed_work_sync(&chip->hvdcp_det_work);
+					smbchg_stay_awake(chip, PM_DETECT_HVDCP);
+					schedule_delayed_work(&chip->hvdcp_det_work,
+						msecs_to_jiffies(chip->hvdcp_notify_ms));
+				}
+			}
 		}
 	}
-#endif
 
 	/* adjust vfloat */
 	smbchg_vfloat_adjust_check(chip);
@@ -3688,11 +3692,9 @@ static int smbchg_external_otg_regulator_disable(struct regulator_dev *rdev)
 	 * value in order to allow normal USBs to be recognized as a valid
 	 * input.
 	 */
-#ifdef CONFIG_MACH_LENOVO_TB8703
-	rc = vote(chip->hvdcp_enable_votable, HVDCP_OTG_VOTER, true, 0);
-#else
-	rc = vote(chip->hvdcp_enable_votable, HVDCP_OTG_VOTER, false, 1);
-#endif
+	rc = vote(chip->hvdcp_enable_votable, HVDCP_OTG_VOTER,
+		chip->keep_hvdcp_disabled_on_otg_exit,
+		chip->keep_hvdcp_disabled_on_otg_exit ? 0 : 1);
 	if (rc < 0) {
 		dev_err(chip->dev, "Couldn't enable HVDCP rc=%d\n", rc);
 		return rc;
@@ -4423,11 +4425,9 @@ static void restore_from_hvdcp_detection(struct smbchg_chip *chip)
 		pr_err("Couldn't configure HVDCP 9V rc=%d\n", rc);
 
 	/* enable HVDCP */
-#ifdef CONFIG_MACH_LENOVO_TB8703
-	rc = vote(chip->hvdcp_enable_votable, HVDCP_PULSING_VOTER, true, 0);
-#else
-	rc = vote(chip->hvdcp_enable_votable, HVDCP_PULSING_VOTER, false, 1);
-#endif
+	rc = vote(chip->hvdcp_enable_votable, HVDCP_PULSING_VOTER,
+		chip->keep_hvdcp_disabled_on_pulsing_exit,
+		chip->keep_hvdcp_disabled_on_pulsing_exit ? 0 : 1);
 	if (rc < 0)
 		pr_err("Couldn't enable HVDCP rc=%d\n", rc);
 
@@ -4441,11 +4441,8 @@ static void restore_from_hvdcp_detection(struct smbchg_chip *chip)
 	/* Reset back to 5V unregulated */
 	rc = smbchg_sec_masked_write(chip,
 		chip->usb_chgpth_base + USBIN_CHGR_CFG,
-#ifdef CONFIG_MACH_LENOVO_TB8703
-		ADAPTER_ALLOWANCE_MASK, 0x0);
-#else
-		ADAPTER_ALLOWANCE_MASK, USBIN_ADAPTER_5V_UNREGULATED_9V);
-#endif
+		ADAPTER_ALLOWANCE_MASK,
+		chip->force_5v_only ? 0x0 : USBIN_ADAPTER_5V_UNREGULATED_9V);
 	if (rc < 0)
 		pr_err("Couldn't write usb allowance rc=%d\n", rc);
 
@@ -4606,7 +4603,7 @@ static void handle_usb_insertion(struct smbchg_chip *chip)
 		cancel_delayed_work_sync(&chip->hvdcp_det_work);
 		smbchg_stay_awake(chip, PM_DETECT_HVDCP);
 		schedule_delayed_work(&chip->hvdcp_det_work,
-					msecs_to_jiffies(HVDCP_NOTIFY_MS));
+					msecs_to_jiffies(chip->hvdcp_notify_ms));
 	}
 
 	smbchg_detect_parallel_charger(chip);
@@ -4892,20 +4889,13 @@ static int fake_insertion_removal(struct smbchg_chip *chip, bool insertion)
 	}
 
 	pr_smb(PR_MISC, "Allow only %s charger\n",
-#ifdef CONFIG_MACH_LENOVO_TB8703
-			insertion ? "5V" : "9V only");
-#else
-			insertion ? "5-9V" : "9V only");
-#endif
+		insertion ? (chip->force_5v_only ? "5V" : "5-9V")
+			: "9V only");
 	rc = smbchg_sec_masked_write(chip,
 			chip->usb_chgpth_base + USBIN_CHGR_CFG,
 			ADAPTER_ALLOWANCE_MASK,
-			insertion ?
-#ifdef CONFIG_MACH_LENOVO_TB8703
-			0x0 : USBIN_ADAPTER_9V);
-#else
-			USBIN_ADAPTER_5V_9V_CONT : USBIN_ADAPTER_9V);
-#endif
+			insertion ? (chip->force_5v_only ? 0x0 :
+				USBIN_ADAPTER_5V_9V_CONT) : USBIN_ADAPTER_9V);
 	if (rc < 0) {
 		pr_err("Couldn't write usb allowance rc=%d\n", rc);
 		return rc;
@@ -4948,7 +4938,7 @@ static void smbchg_handle_hvdcp3_disable(struct smbchg_chip *chip)
 		smbchg_change_usb_supply_type(chip, usb_supply_type);
 		if (usb_supply_type == POWER_SUPPLY_TYPE_USB_DCP)
 			schedule_delayed_work(&chip->hvdcp_det_work,
-				msecs_to_jiffies(HVDCP_NOTIFY_MS));
+				msecs_to_jiffies(chip->hvdcp_notify_ms));
 	} else {
 		smbchg_change_usb_supply_type(chip, POWER_SUPPLY_TYPE_UNKNOWN);
 	}
@@ -5090,11 +5080,9 @@ static int smbchg_unprepare_for_pulsing(struct smbchg_chip *chip)
 
 	/* enable HVDCP */
 	pr_smb(PR_MISC, "Enable HVDCP\n");
-#ifdef CONFIG_MACH_LENOVO_TB8703
-	rc = vote(chip->hvdcp_enable_votable, HVDCP_PULSING_VOTER, true, 0);
-#else
-	rc = vote(chip->hvdcp_enable_votable, HVDCP_PULSING_VOTER, false, 1);
-#endif
+	rc = vote(chip->hvdcp_enable_votable, HVDCP_PULSING_VOTER,
+		chip->keep_hvdcp_disabled_on_pulsing_exit,
+		chip->keep_hvdcp_disabled_on_pulsing_exit ? 0 : 1);
 	if (rc < 0) {
 		pr_err("Couldn't enable HVDCP rc=%d\n", rc);
 		return rc;
@@ -7172,20 +7160,20 @@ static int smbchg_hw_init(struct smbchg_chip *chip)
 		}
 	}
 
-#ifdef CONFIG_MACH_LENOVO_TB8703
-	/* Allow 5V-only chargers and disable HVDCP. */
-	rc = smbchg_sec_masked_write(chip,
-			chip->usb_chgpth_base + USBIN_CHGR_CFG,
-			ADAPTER_ALLOWANCE_MASK, 0x0);
-	if (rc < 0)
-		pr_err("Couldn't write USB allowance rc=%d\n", rc);
+	if (chip->force_5v_only) {
+		/* Allow 5V-only chargers and disable HVDCP. */
+		rc = smbchg_sec_masked_write(chip,
+				chip->usb_chgpth_base + USBIN_CHGR_CFG,
+				ADAPTER_ALLOWANCE_MASK, 0x0);
+		if (rc < 0)
+			pr_err("Couldn't write USB allowance rc=%d\n", rc);
 
-	rc = smbchg_sec_masked_write(chip,
-			chip->usb_chgpth_base + CHGPTH_CFG,
-			HVDCP_EN_BIT, 0);
-	if (rc < 0)
-		dev_err(chip->dev, "Couldn't disable HVDCP rc=%d\n", rc);
-#endif
+		rc = smbchg_sec_masked_write(chip,
+				chip->usb_chgpth_base + CHGPTH_CFG,
+				HVDCP_EN_BIT, 0);
+		if (rc < 0)
+			dev_err(chip->dev, "Couldn't disable HVDCP rc=%d\n", rc);
+	}
 
 	if (chip->wa_flags & SMBCHG_BATT_OV_WA)
 		batt_ov_wa_check(chip);
@@ -7417,6 +7405,31 @@ static int smb_parse_dt(struct smbchg_chip *chip)
 				"qcom,skip-usb-notification");
 
 	chip->otg_pinctrl = of_property_read_bool(node, "qcom,otg-pinctrl");
+
+	chip->rerun_apsd_on_mismatch = of_property_read_bool(node,
+			"qcom,rerun-apsd-on-mismatch");
+	chip->set_dp_dm_low_on_rerun = of_property_read_bool(node,
+			"qcom,set-dp-dm-low-on-rerun");
+	chip->keep_hvdcp_disabled_on_otg_exit = of_property_read_bool(node,
+			"qcom,keep-hvdcp-disabled-on-otg-exit");
+	chip->keep_hvdcp_disabled_on_pulsing_exit = of_property_read_bool(node,
+			"qcom,keep-hvdcp-disabled-on-pulsing-exit");
+	chip->force_5v_only = of_property_read_bool(node,
+			"qcom,force-5v-only");
+	chip->parallel_charging_disabled = of_property_read_bool(node,
+			"qcom,parallel-charging-disabled");
+	chip->cold_temp_offset = 0;
+	rc = of_property_read_u32(node, "qcom,cold-temp-offset",
+			&chip->cold_temp_offset);
+	if (rc && rc != -EINVAL)
+		return rc;
+	chip->hvdcp_notify_ms = HVDCP_NOTIFY_MS;
+	rc = of_property_read_u32(node, "qcom,hvdcp-notify-ms",
+			&chip->hvdcp_notify_ms);
+	if (rc && rc != -EINVAL)
+		return rc;
+	if (!chip->hvdcp_notify_ms || chip->hvdcp_notify_ms > 60000)
+		return -EINVAL;
 
 	return 0;
 }
@@ -7816,9 +7829,9 @@ static int smbchg_check_chg_version(struct smbchg_chip *chip)
 		chip->schg_version = QPNP_SCHG;
 		break;
 	case PMI8950:
-#ifndef CONFIG_MACH_LENOVO_TB8703
-		chip->wa_flags |= SMBCHG_RESTART_WA;
-#endif
+		if (!of_property_read_bool(chip->pdev->dev.of_node,
+				"qcom,disable-restart-workaround"))
+			chip->wa_flags |= SMBCHG_RESTART_WA;
 	case PMI8937:
 	/* fall through */
 	case PMI8940:
@@ -7905,7 +7918,7 @@ static void rerun_hvdcp_det_if_necessary(struct smbchg_chip *chip)
 			cancel_delayed_work_sync(&chip->hvdcp_det_work);
 			smbchg_stay_awake(chip, PM_DETECT_HVDCP);
 			schedule_delayed_work(&chip->hvdcp_det_work,
-					msecs_to_jiffies(HVDCP_NOTIFY_MS));
+					msecs_to_jiffies(chip->hvdcp_notify_ms));
 		}
 	}
 }
@@ -8186,11 +8199,8 @@ static int smbchg_probe(struct platform_device *pdev)
 			goto out;
 		}
 	}
-#ifdef CONFIG_MACH_LENOVO_TB8703
-	chip->allow_hvdcp3_detection = false;
-#else
-	chip->allow_hvdcp3_detection = true;
-#endif
+	chip->allow_hvdcp3_detection = !of_property_read_bool(
+		chip->pdev->dev.of_node, "qcom,disable-hvdcp3-detection");
 
 	if (chip->cfg_chg_led_support &&
 			chip->schg_version == QPNP_SCHG_LITE) {
