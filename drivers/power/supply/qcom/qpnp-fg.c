@@ -2026,10 +2026,12 @@ static void fg_handle_battery_insertion(struct fg_chip *chip)
 }
 
 
+#ifndef CONFIG_MACH_LENOVO_TB8703
 static int soc_to_setpoint(int soc)
 {
 	return DIV_ROUND_CLOSEST(soc * 255, 100);
 }
+#endif
 
 static void batt_to_setpoint_adc(int vbatt_mv, u8 *data)
 {
@@ -2255,10 +2257,29 @@ static int get_prop_capacity(struct fg_chip *chip)
 				FULL_SOC_RAW - 2) + 1;
 	}
 
+#ifdef CONFIG_MACH_LENOVO_TB8703
+	if (chip->battery_missing) {
+		msoc = get_monotonic_soc_raw(chip);
+		return DIV_ROUND_CLOSEST((msoc - 1) * (FULL_CAPACITY - 2),
+				FULL_SOC_RAW - 2) + 1;
+	}
+
+	if (!chip->profile_loaded && !chip->use_otp_profile) {
+		msoc = get_monotonic_soc_raw(chip);
+		if (msoc == FULL_SOC_RAW)
+			return FULL_CAPACITY;
+		else if (msoc == 0)
+			return EMPTY_CAPACITY;
+
+		return DIV_ROUND_CLOSEST((msoc - 1) * (FULL_CAPACITY - 2),
+				FULL_SOC_RAW - 2) + 1;
+	}
+#else
 	if (chip->battery_missing)
 		return MISSING_CAPACITY;
 	if (!chip->profile_loaded && !chip->use_otp_profile)
 		return DEFAULT_CAPACITY;
+#endif
 	if (chip->charge_full)
 		return FULL_CAPACITY;
 	if (chip->soc_empty) {
@@ -8033,7 +8054,11 @@ static int fg_common_hw_init(struct fg_chip *chip)
 	}
 
 	rc = fg_mem_masked_write(chip, settings[FG_MEM_DELTA_SOC].address, 0xFF,
+#ifdef CONFIG_MACH_LENOVO_TB8703
+			settings[FG_MEM_DELTA_SOC].value,
+#else
 			soc_to_setpoint(settings[FG_MEM_DELTA_SOC].value),
+#endif
 			settings[FG_MEM_DELTA_SOC].offset);
 	if (rc) {
 		pr_err("failed to write delta soc rc=%d\n", rc);
