@@ -527,6 +527,8 @@ struct fg_chip {
 	bool			soc_reporting_ready;
 	bool			use_otp_profile;
 	bool			battery_missing;
+	bool			use_monotonic_soc_when_profile_unavailable;
+	bool			delta_soc_is_raw;
 	bool			power_supply_registered;
 	bool			sw_rbias_ctrl;
 	bool			use_thermal_coefficients;
@@ -2026,12 +2028,10 @@ static void fg_handle_battery_insertion(struct fg_chip *chip)
 }
 
 
-#ifndef CONFIG_MACH_LENOVO_TB8703
 static int soc_to_setpoint(int soc)
 {
 	return DIV_ROUND_CLOSEST(soc * 255, 100);
 }
-#endif
 
 static void batt_to_setpoint_adc(int vbatt_mv, u8 *data)
 {
@@ -2257,29 +2257,23 @@ static int get_prop_capacity(struct fg_chip *chip)
 				FULL_SOC_RAW - 2) + 1;
 	}
 
-#ifdef CONFIG_MACH_LENOVO_TB8703
-	if (chip->battery_missing) {
+	if (chip->use_monotonic_soc_when_profile_unavailable &&
+			(chip->battery_missing ||
+			(!chip->profile_loaded && !chip->use_otp_profile))) {
 		msoc = get_monotonic_soc_raw(chip);
-		return DIV_ROUND_CLOSEST((msoc - 1) * (FULL_CAPACITY - 2),
-				FULL_SOC_RAW - 2) + 1;
-	}
-
-	if (!chip->profile_loaded && !chip->use_otp_profile) {
-		msoc = get_monotonic_soc_raw(chip);
-		if (msoc == FULL_SOC_RAW)
-			return FULL_CAPACITY;
-		else if (msoc == 0)
+		if (msoc < 0)
+			return DEFAULT_CAPACITY;
+		if (msoc == 0)
 			return EMPTY_CAPACITY;
-
+		if (msoc >= FULL_SOC_RAW)
+			return FULL_CAPACITY;
 		return DIV_ROUND_CLOSEST((msoc - 1) * (FULL_CAPACITY - 2),
 				FULL_SOC_RAW - 2) + 1;
 	}
-#else
 	if (chip->battery_missing)
 		return MISSING_CAPACITY;
 	if (!chip->profile_loaded && !chip->use_otp_profile)
 		return DEFAULT_CAPACITY;
-#endif
 	if (chip->charge_full)
 		return FULL_CAPACITY;
 	if (chip->soc_empty) {
@@ -7018,6 +7012,12 @@ static int fg_of_init(struct fg_chip *chip)
 	struct device_node *node = chip->pdev->dev.of_node;
 	u32 temp[2] = {0};
 
+	chip->use_monotonic_soc_when_profile_unavailable =
+		of_property_read_bool(node,
+			"qcom,use-monotonic-soc-when-profile-unavailable");
+	chip->delta_soc_is_raw = of_property_read_bool(node,
+			"qcom,fg-delta-soc-is-raw");
+
 	OF_READ_SETTING(FG_MEM_SOFT_HOT, "warm-bat-decidegc", rc, 1);
 	OF_READ_SETTING(FG_MEM_SOFT_COLD, "cool-bat-decidegc", rc, 1);
 	OF_READ_SETTING(FG_MEM_HARD_HOT, "hot-bat-decidegc", rc, 1);
@@ -8054,11 +8054,9 @@ static int fg_common_hw_init(struct fg_chip *chip)
 	}
 
 	rc = fg_mem_masked_write(chip, settings[FG_MEM_DELTA_SOC].address, 0xFF,
-#ifdef CONFIG_MACH_LENOVO_TB8703
-			settings[FG_MEM_DELTA_SOC].value,
-#else
+			chip->delta_soc_is_raw ?
+			settings[FG_MEM_DELTA_SOC].value :
 			soc_to_setpoint(settings[FG_MEM_DELTA_SOC].value),
-#endif
 			settings[FG_MEM_DELTA_SOC].offset);
 	if (rc) {
 		pr_err("failed to write delta soc rc=%d\n", rc);
