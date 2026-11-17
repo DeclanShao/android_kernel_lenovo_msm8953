@@ -420,7 +420,12 @@ module_param_named(
 	debug_mask, smbchg_debug_mask, int, 00600
 );
 
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+static int smbchg_parallel_en = 0;
+#else
 static int smbchg_parallel_en = 1;
+#endif
+
 module_param_named(
 	parallel_en, smbchg_parallel_en, int, 00600
 );
@@ -1034,6 +1039,10 @@ static int get_prop_batt_temp(struct smbchg_chip *chip)
 		pr_smb(PR_STATUS, "Couldn't get temperature rc = %d\n", rc);
 		temp = DEFAULT_BATT_TEMP;
 	}
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	if (temp < -15)
+		temp -= 30;
+#endif
 	return temp;
 }
 
@@ -3500,6 +3509,34 @@ static void smbchg_external_power_changed(struct power_supply *psy)
 									rc);
 	}
 
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	pr_info("rc: %d, usb_supply_type: %d, is_usb_presend: %d\n", rc, usb_supply_type, is_usb_present(chip));
+	if (!rc && usb_supply_type == POWER_SUPPLY_TYPE_USB &&
+			prop.intval != POWER_SUPPLY_TYPE_USB &&
+			is_usb_present(chip)) {
+		/* incorrect type detected */
+		pr_smb(PR_MISC,
+			"Incorrect charger type detetced - rerun APSD\n");
+		chip->hvdcp_3_det_ignore_uv = true;
+		pr_smb(PR_MISC, "setting usb psy dp=f dm=f\n");
+		power_supply_set_dp_dm(chip->usb_psy,
+				POWER_SUPPLY_DP_DM_DPF_DMF);
+		rc = rerun_apsd(chip);
+		if (rc)
+			pr_err("APSD re-run failed\n");
+		chip->hvdcp_3_det_ignore_uv = false;
+		if (!is_src_detect_high(chip)) {
+			pr_smb(PR_MISC, "Charger removed - force removal\n");
+			update_usb_status(chip, is_usb_present(chip), true);
+			return;
+		}
+
+		read_usb_type(chip, &usb_type_name, &usb_supply_type);
+		if (usb_supply_type == POWER_SUPPLY_TYPE_USB_DCP)
+			schedule_delayed_work(&chip->hvdcp_det_work,
+				msecs_to_jiffies(HVDCP_NOTIFY_MS));
+	}
+#endif
 	/* adjust vfloat */
 	smbchg_vfloat_adjust_check(chip);
 }
@@ -3634,7 +3671,11 @@ static int smbchg_external_otg_regulator_disable(struct regulator_dev *rdev)
 	 * value in order to allow normal USBs to be recognized as a valid
 	 * input.
 	 */
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	rc = vote(chip->hvdcp_enable_votable, HVDCP_OTG_VOTER, true, 0);
+#else
 	rc = vote(chip->hvdcp_enable_votable, HVDCP_OTG_VOTER, false, 1);
+#endif
 	if (rc < 0) {
 		dev_err(chip->dev, "Couldn't enable HVDCP rc=%d\n", rc);
 		return rc;
@@ -4365,7 +4406,11 @@ static void restore_from_hvdcp_detection(struct smbchg_chip *chip)
 		pr_err("Couldn't configure HVDCP 9V rc=%d\n", rc);
 
 	/* enable HVDCP */
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+    rc = vote(chip->hvdcp_enable_votable, HVDCP_PULSING_VOTER, true, 0);
+#else
 	rc = vote(chip->hvdcp_enable_votable, HVDCP_PULSING_VOTER, false, 1);
+#endif
 	if (rc < 0)
 		pr_err("Couldn't enable HVDCP rc=%d\n", rc);
 
@@ -4379,7 +4424,11 @@ static void restore_from_hvdcp_detection(struct smbchg_chip *chip)
 	/* Reset back to 5V unregulated */
 	rc = smbchg_sec_masked_write(chip,
 		chip->usb_chgpth_base + USBIN_CHGR_CFG,
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+			ADAPTER_ALLOWANCE_MASK, 0x0/*USBIN_ADAPTER_5V_9V_CONT*/);//modify by guodandan 2015-10-29
+#else
 		ADAPTER_ALLOWANCE_MASK, USBIN_ADAPTER_5V_UNREGULATED_9V);
+#endif
 	if (rc < 0)
 		pr_err("Couldn't write usb allowance rc=%d\n", rc);
 
@@ -4827,12 +4876,20 @@ static int fake_insertion_removal(struct smbchg_chip *chip, bool insertion)
 	}
 
 	pr_smb(PR_MISC, "Allow only %s charger\n",
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+			insertion ? "5V" : "9V only");//modify by guodandan 2015-10-29
+#else
 			insertion ? "5-9V" : "9V only");
+#endif
 	rc = smbchg_sec_masked_write(chip,
 			chip->usb_chgpth_base + USBIN_CHGR_CFG,
 			ADAPTER_ALLOWANCE_MASK,
 			insertion ?
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+			0x0/*USBIN_ADAPTER_5V_9V_CONT*/ : USBIN_ADAPTER_9V);//modify by guodandan 2015-10-29
+#else
 			USBIN_ADAPTER_5V_9V_CONT : USBIN_ADAPTER_9V);
+#endif
 	if (rc < 0) {
 		pr_err("Couldn't write usb allowance rc=%d\n", rc);
 		return rc;
@@ -5017,7 +5074,11 @@ static int smbchg_unprepare_for_pulsing(struct smbchg_chip *chip)
 
 	/* enable HVDCP */
 	pr_smb(PR_MISC, "Enable HVDCP\n");
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+    rc = vote(chip->hvdcp_enable_votable, HVDCP_PULSING_VOTER, true, 0);
+#else
 	rc = vote(chip->hvdcp_enable_votable, HVDCP_PULSING_VOTER, false, 1);
+#endif
 	if (rc < 0) {
 		pr_err("Couldn't enable HVDCP rc=%d\n", rc);
 		return rc;
@@ -7095,6 +7156,23 @@ static int smbchg_hw_init(struct smbchg_chip *chip)
 		}
 	}
 
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	/*modify by guodandan 2015-10-29 begin*/
+	/* allow 5V only chargers */
+	rc = smbchg_sec_masked_write(chip,
+			chip->usb_chgpth_base + USBIN_CHGR_CFG,
+			ADAPTER_ALLOWANCE_MASK, 0x0);
+	if (rc < 0)
+		pr_err("Couldn't write usb allowance rc=%d\n", rc);
+
+	rc = smbchg_sec_masked_write(chip,
+				chip->usb_chgpth_base + CHGPTH_CFG,
+				HVDCP_EN_BIT, 0);
+	if (rc < 0)
+		dev_err(chip->dev, "Couldn't disable HVDCP rc=%d\n", rc);
+	/*modify by guodandan 2015-10-29 end*/
+#endif
+
 	if (chip->wa_flags & SMBCHG_BATT_OV_WA)
 		batt_ov_wa_check(chip);
 
@@ -7724,7 +7802,9 @@ static int smbchg_check_chg_version(struct smbchg_chip *chip)
 		chip->schg_version = QPNP_SCHG;
 		break;
 	case PMI8950:
+#if !IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
 		chip->wa_flags |= SMBCHG_RESTART_WA;
+#endif
 	case PMI8937:
 	/* fall through */
 	case PMI8940:
@@ -8092,7 +8172,12 @@ static int smbchg_probe(struct platform_device *pdev)
 			goto out;
 		}
 	}
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	chip->allow_hvdcp3_detection = false;
+#else
 	chip->allow_hvdcp3_detection = true;
+#endif
 
 	if (chip->cfg_chg_led_support &&
 			chip->schg_version == QPNP_SCHG_LITE) {
