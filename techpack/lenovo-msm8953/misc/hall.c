@@ -31,6 +31,7 @@ struct hall_switch_info
 	int irq;
 	int hall_switch_state;
 	struct input_dev *ipdev;
+	struct regulator *vio;	/* vdd-io rail, kept for disable/put on remove */
 #ifdef CONFIG_HALL_SYS
 	struct class *hall_sys_class;
 #endif
@@ -86,7 +87,7 @@ static int hall_parse_dt(struct device *dev, struct hall_switch_info *pdata)
 }
 
 
-static int hall_power_on(struct device *pdev)//for test mawenke
+static int hall_power_on(struct device *pdev, struct hall_switch_info *hall_info)//for test mawenke
 {
 	int ret = 0;
 	//struct regulator *hall_vdd;
@@ -116,10 +117,12 @@ static int hall_power_on(struct device *pdev)//for test mawenke
 	#if 1
 	hall_vio = regulator_get(pdev, "vdd-io");
 	if (IS_ERR(hall_vio)) {
-		ret = -1;
+		ret = PTR_ERR(hall_vio);
 		dev_err(pdev, "Regulator get failed vio ret=%d\n", ret);
 		return ret;
 	}
+	/* keep the handle so hall_remove()/suspend can disable and put it */
+	hall_info->vio = hall_vio;
 
 	if (regulator_count_voltages(hall_vio) > 0) {
 		ret = regulator_set_voltage(hall_vio, 1800000, 1800000);
@@ -132,17 +135,28 @@ static int hall_power_on(struct device *pdev)//for test mawenke
 	ret = regulator_enable(hall_vio);
 	if (ret) {
 		dev_err(pdev, "Regulator vio enable failed ret=%d\n", ret);
-		return ret;
+		goto reg_vio_put;
 	}
 	#endif
 	
 	return ret;
 
 reg_vio_put:
+	hall_info->vio = NULL;
 	regulator_put(hall_vio);
 //reg_vdd_put:
 	//regulator_put(hall_vdd);
 	return ret;
+}
+
+static void hall_power_off(struct hall_switch_info *hall_info)
+{
+	if (!hall_info->vio)
+		return;
+
+	regulator_disable(hall_info->vio);
+	regulator_put(hall_info->vio);
+	hall_info->vio = NULL;
 }
 
 #ifdef CONFIG_HALL_SYS
@@ -216,14 +230,26 @@ static int hall_probe(struct platform_device *pdev)
 	hall_info->ipdev->name = "hall-switch-input";
 	input_set_capability(hall_info->ipdev, EV_KEY, KEY_HALL_OPEN);
 	input_set_capability(hall_info->ipdev, EV_KEY, KEY_HALL_CLOSE);
+	/*
+	 * INPUT_PROP_NO_DUMMY_RELEASE is a CAF-private property: it does not
+	 * exist in mainline (it even aliases INPUT_PROP_ACCELEROMETER at 0x06)
+	 * and only the CAF input core knows how to honour it, so keep it
+	 * conditional to stay buildable on 4.19.
+	 */
+#ifdef INPUT_PROP_NO_DUMMY_RELEASE
 	set_bit(INPUT_PROP_NO_DUMMY_RELEASE, hall_info->ipdev->propbit);
+#endif
 	rc = input_register_device(hall_info->ipdev);
 	if (rc) {
 		pr_err("hall_probe: input_register_device fail rc=%d\n", rc);
 		goto input_error;
 	}
 
-	hall_power_on(&pdev->dev);
+	rc = hall_power_on(&pdev->dev, hall_info);
+	if (rc) {
+		pr_err("hall_probe: hall_power_on fail rc=%d\n", rc);
+		goto free_input_device;
+	}
 	
 	
 /*interrupt config*/
@@ -245,8 +271,14 @@ static int hall_probe(struct platform_device *pdev)
 		hall_info->irq = gpio_to_irq(hall_info->irq_gpio);
 		pr_err("Macle irq = %d\n", hall_info->irq);
 		irq_set_irq_wake(hall_info->irq,1);
-		rc = request_threaded_irq(hall_info->irq, hall_interrupt, NULL,
-			IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING|IRQF_ONESHOT,
+		/*
+		 * IRQF_ONESHOT only makes sense together with a threaded
+		 * handler; with thread_fn == NULL request_threaded_irq() fails
+		 * with -EINVAL on several 4.x kernels. Everything is done in
+		 * hard IRQ context here, so use plain request_irq().
+		 */
+		rc = request_irq(hall_info->irq, hall_interrupt,
+			IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING,
 			"hall-switch-irq", hall_info);
 		if (rc < 0) {
 			pr_err("hall_probe: request_irq fail rc=%d\n", rc);
@@ -267,6 +299,7 @@ err_irq:
 
 free_input_device:
 	input_unregister_device(hall_info->ipdev);
+	hall_power_off(hall_info);
 
 input_error:
 	platform_set_drvdata(pdev, NULL);
@@ -280,12 +313,19 @@ static int hall_remove(struct platform_device *pdev)
 {
 	struct hall_switch_info *hall = platform_get_drvdata(pdev);
 #ifdef CONFIG_HALL_SYS
-	class_destroy(hall->hall_sys_class);
+	if (hall->hall_sys_class) {
+		class_remove_file(hall->hall_sys_class, &hall_state);
+		class_destroy(hall->hall_sys_class);
+		hall->hall_sys_class = NULL;
+	}
 #endif
 	pr_err("hall_remove\n");
-	free_irq(hall->irq, hall->ipdev);
+	/* dev_id must match the one passed to request_irq() */
+	free_irq(hall->irq, hall);
 	gpio_free(hall->irq_gpio);
 	input_unregister_device(hall->ipdev);
+	hall_power_off(hall);
+	global_hall_info = NULL;
 	return 0;
 }
 
