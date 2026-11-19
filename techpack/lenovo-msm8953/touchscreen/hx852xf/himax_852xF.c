@@ -1383,9 +1383,9 @@ static int i_update_FW(void)
 		}
 
 	}else if(panel_id_ret == 0){
-		if(( private_ts->vendor_fw_ver_H < i_CTPM_FW[FW_VER_MAJ_FLASH_ADDR] )
-			|| ( private_ts->vendor_fw_ver_L < i_CTPM_FW[FW_VER_MIN_FLASH_ADDR] )
-			|| ( private_ts->vendor_config_ver < i_CTPM_FW[FW_CFG_VER_FLASH_ADDR])
+		if(( private_ts->vendor_fw_ver_H != i_CTPM_FW[FW_VER_MAJ_FLASH_ADDR] )
+			|| ( private_ts->vendor_fw_ver_L != i_CTPM_FW[FW_VER_MIN_FLASH_ADDR] )
+			|| ( private_ts->vendor_config_ver != i_CTPM_FW[FW_CFG_VER_FLASH_ADDR])
 			|| ( himax_calculateChecksum(false) == 0 ))
 			{		 
 #ifdef HX_RST_PIN_FUNC
