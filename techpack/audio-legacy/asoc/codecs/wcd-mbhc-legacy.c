@@ -603,7 +603,11 @@ correct_plug_type:
 					 */
 					pr_debug("%s: switch didn't work\n",
 						  __func__);
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+                    plug_type = MBHC_PLUG_TYPE_HEADPHONE;
+#else
 					plug_type = MBHC_PLUG_TYPE_GND_MIC_SWAP;
+#endif
 					goto report;
 				} else {
 					plug_type = MBHC_PLUG_TYPE_GND_MIC_SWAP;

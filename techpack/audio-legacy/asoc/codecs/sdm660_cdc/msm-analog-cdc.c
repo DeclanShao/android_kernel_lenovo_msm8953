@@ -26,6 +26,10 @@
 #include "msm-analog-cdc-regmap.h"
 #include <asoc/sdm660-common.h>
 #include <asoc/wcd-mbhc-v2-api.h>
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+#include <linux/gpio.h>
+#include "../../msm8952.h"
+#endif
 
 #define DRV_NAME "pmic_analog_codec"
 #define SDM660_CDC_RATES (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |\
@@ -66,6 +70,14 @@
 
 #define VOLTAGE_CONVERTER(value, min_value, step_size)\
 	((value - min_value)/step_size)
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+static int external_spk_control = 1;
+
+static int external_hs_control = 0;
+
+static int external_rec_control = 0;
+#endif
 
 enum {
 	BOOST_SWITCH = 0,
@@ -193,6 +205,14 @@ static void msm_anlg_cdc_set_auto_zeroing(struct snd_soc_component *component,
 static void msm_anlg_cdc_configure_cap(struct snd_soc_component *component,
 				       bool micbias1, bool micbias2);
 static bool msm_anlg_cdc_use_mb(struct snd_soc_component *component);
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+extern int msm_spk_ext_pa_ctrl(struct msm_asoc_mach_data *pdatadata, bool value);
+
+int msm_hs_ext_pa_ctrl(struct msm_asoc_mach_data *pdatadata, bool value);
+
+int msm_rec_ext_pa_ctrl(struct msm_asoc_mach_data *pdatadata, bool value);
+#endif
 
 static int get_codec_version(struct sdm660_cdc_priv *sdm660_cdc)
 {
@@ -1908,6 +1928,74 @@ static int msm_anlg_cdc_ext_spk_boost_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+static int get_external_spk_pa(struct snd_kcontrol *kcontrol,
+		       struct snd_ctl_elem_value *ucontrol)
+{
+	pr_debug("At %d In (%s),external_spk_control=%d\n",__LINE__, __FUNCTION__,external_spk_control);
+	ucontrol->value.integer.value[0] = external_spk_control;
+	return 0;
+}
+
+static int set_external_spk_pa(struct snd_kcontrol *kcontrol,
+		       struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
+	struct msm_asoc_mach_data *pdata = NULL;
+	pdata = snd_soc_card_get_drvdata(codec->component.card);
+	pr_debug("At %d In (%s),external_spk_control=%d,value.integer.value[0]=%ld\n",__LINE__, __FUNCTION__,external_spk_control,ucontrol->value.integer.value[0]);
+	if (external_spk_control == ucontrol->value.integer.value[0])
+		return 0;
+	external_spk_control = ucontrol->value.integer.value[0];
+	msm_spk_ext_pa_ctrl(pdata, external_spk_control);
+	return 1;
+}
+
+static int get_external_hs_pa(struct snd_kcontrol *kcontrol,
+		       struct snd_ctl_elem_value *ucontrol)
+{
+	pr_debug("At %d In (%s),external_hs_control=%d\n",__LINE__, __FUNCTION__,external_hs_control);
+	ucontrol->value.integer.value[0] = external_hs_control;
+	return 0;
+}
+
+static int set_external_hs_pa(struct snd_kcontrol *kcontrol,
+		       struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
+	struct msm_asoc_mach_data *pdata = NULL;
+	pdata = snd_soc_card_get_drvdata(codec->component.card);
+	pr_debug("At %d In (%s),external_hs_control=%d,value.integer.value[0]=%ld\n",__LINE__, __FUNCTION__,external_hs_control,ucontrol->value.integer.value[0]);
+	if (external_hs_control == ucontrol->value.integer.value[0])
+		return 0;
+	external_hs_control = ucontrol->value.integer.value[0];
+	msm_hs_ext_pa_ctrl(pdata, external_hs_control);
+	return 1;
+}
+
+static int get_external_rec_pa(struct snd_kcontrol *kcontrol,
+		       struct snd_ctl_elem_value *ucontrol)
+{
+	pr_debug("At %d In (%s),external_rec_control=%d\n",__LINE__, __FUNCTION__,external_rec_control);
+	ucontrol->value.integer.value[0] = external_rec_control;
+	return 0;
+}
+
+static int set_external_rec_pa(struct snd_kcontrol *kcontrol,
+		       struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
+	struct msm_asoc_mach_data *pdata = NULL;
+	pdata = snd_soc_card_get_drvdata(codec->component.card);
+	pr_debug("At %d In (%s),external_rec_control=%d,value.integer.value[0]=%ld\n",__LINE__, __FUNCTION__,external_rec_control,ucontrol->value.integer.value[0]);
+	if (external_rec_control == ucontrol->value.integer.value[0])
+		return 0;
+	external_rec_control = ucontrol->value.integer.value[0];
+	msm_rec_ext_pa_ctrl(pdata, external_rec_control);
+	return 1;
+}
+#endif
+
 static int msm_anlg_cdc_ext_spk_boost_set(struct snd_kcontrol *kcontrol,
 					  struct snd_ctl_elem_value *ucontrol)
 {
@@ -1958,6 +2046,26 @@ static const struct soc_enum msm_anlg_cdc_spk_boost_ctl_enum[] = {
 		SOC_ENUM_SINGLE_EXT(2, msm_anlg_cdc_spk_boost_ctrl_text),
 };
 
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+static const char * const msm_external_spk_pa_text[] = {
+		"OFF", "ON"};
+static const struct soc_enum msm_external_spk_pa_enum[] = {
+		SOC_ENUM_SINGLE_EXT(2, msm_external_spk_pa_text),
+};
+
+static const char * const msm_external_hs_pa_text[] = {
+		"OFF", "ON"};
+static const struct soc_enum msm_external_hs_pa_enum[] = {
+		SOC_ENUM_SINGLE_EXT(2, msm_external_hs_pa_text),
+};
+
+static const char * const msm_external_rec_pa_text[] = {
+		"OFF", "ON"};
+static const struct soc_enum msm_external_rec_pa_enum[] = {
+		SOC_ENUM_SINGLE_EXT(2, msm_external_rec_pa_text),
+};
+#endif
+
 static const char * const msm_anlg_cdc_ext_spk_boost_ctrl_text[] = {
 		"DISABLE", "ENABLE"};
 static const struct soc_enum msm_anlg_cdc_ext_spk_boost_ctl_enum[] = {
@@ -1991,11 +2099,27 @@ static const struct snd_kcontrol_new msm_anlg_cdc_snd_controls[] = {
 	SOC_ENUM_EXT("EAR PA Gain", msm_anlg_cdc_ear_pa_gain_enum[0],
 		msm_anlg_cdc_pa_gain_get, msm_anlg_cdc_pa_gain_put),
 
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	SOC_ENUM_EXT("Speaker PA Open", msm_external_spk_pa_enum[0],
+		get_external_spk_pa, set_external_spk_pa),
+
+	SOC_ENUM_EXT("HS PA Open", msm_external_hs_pa_enum[0],
+		get_external_hs_pa, set_external_hs_pa),
+
+	SOC_ENUM_EXT("Receiver PA Open", msm_external_rec_pa_enum[0],
+		get_external_rec_pa, set_external_rec_pa),
+#endif
+
 	SOC_ENUM_EXT("Speaker Boost", msm_anlg_cdc_spk_boost_ctl_enum[0],
 		msm_anlg_cdc_spk_boost_get, msm_anlg_cdc_spk_boost_set),
 
 	SOC_ENUM_EXT("Ext Spk Boost", msm_anlg_cdc_ext_spk_boost_ctl_enum[0],
 		msm_anlg_cdc_ext_spk_boost_get, msm_anlg_cdc_ext_spk_boost_set),
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	SOC_SINGLE("MICBIAS CAPLESS Switch",
+			 MSM89XX_PMIC_ANALOG_MICB_1_EN, 6, 1, 0),
+#endif
 
 	SOC_SINGLE_TLV("ADC1 Volume", MSM89XX_PMIC_ANALOG_TX_1_EN, 3,
 					8, 0, analog_gain),
@@ -2167,6 +2291,74 @@ static const struct soc_enum lo_enum =
 static const struct snd_kcontrol_new lo_mux[] = {
 	SOC_DAPM_ENUM("LINE_OUT", lo_enum)
 };
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+int msm_hs_ext_pa_ctrl(struct msm_asoc_mach_data *pdatadata, bool value)
+{
+	struct msm_asoc_mach_data *pdata = pdatadata; //snd_soc_card_get_drvdata(data);
+	bool on_off = value;
+	int ret = 0;
+
+	pr_debug("%s, hs_is_on=%d,spk_hs_switch_gpio=%d, on_off=%d\n", __func__, pdata->hs_is_on,pdata->spk_hs_switch_gpio, on_off);
+	if (gpio_is_valid(pdata->spk_hs_switch_gpio))
+	{
+		if (on_off)
+		{
+            gpio_direction_output(pdata->spk_hs_switch_gpio, 0);
+            gpio_set_value_cansleep(pdata->spk_hs_switch_gpio, false);
+            msleep(3);
+			pr_debug("At %d In (%s),after set,spk_hs_switch_gpio=%d\n",__LINE__, __FUNCTION__,gpio_get_value(pdata->spk_hs_switch_gpio));
+		}
+		else {
+            gpio_direction_output(pdata->spk_hs_switch_gpio, 1);
+            gpio_set_value_cansleep(pdata->spk_hs_switch_gpio, true);
+            msleep(3);
+			pr_debug("At %d In (%s),after close,spk_hs_switch_gpio=%d\n",__LINE__, __FUNCTION__,gpio_get_value(pdata->spk_hs_switch_gpio));
+		}
+	}
+	else
+	{
+		pr_debug("%s, error\n", __func__);
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
+ int msm_rec_ext_pa_ctrl(struct msm_asoc_mach_data *pdatadata, bool value)
+{
+	struct msm_asoc_mach_data *pdata = pdatadata; //snd_soc_card_get_drvdata(data);
+	bool on_off = value;
+	int ret = 0;
+
+	pr_debug("%s, rec_is_on=%d,spk_rec_switch_gpio_lc=%d, on_off=%d\n", __func__, pdata->rec_is_on,pdata->spk_rec_switch_gpio_lc, on_off);
+	if (gpio_is_valid(pdata->spk_rec_switch_gpio_lc))
+	{
+		if (on_off)
+		{
+			gpio_direction_output(pdata->spk_rec_switch_gpio_lc, 0);
+			gpio_set_value_cansleep(pdata->spk_rec_switch_gpio_lc, false);
+			//pr_debug("At %d In (%s),will delay\n",__LINE__, __FUNCTION__);
+			msleep(3);
+			pr_debug("At %d In (%s),after set,spk_rec_switch_gpio_lc=%d\n",__LINE__, __FUNCTION__,gpio_get_value(pdata->spk_rec_switch_gpio_lc));
+
+		}
+		else {
+			//pr_debug("At %d In (%s),close pa\n",__LINE__, __FUNCTION__);
+			gpio_direction_output(pdata->spk_rec_switch_gpio_lc, 1);
+			gpio_set_value_cansleep(pdata->spk_rec_switch_gpio_lc, true);
+			pr_debug("At %d In (%s),after close,spk_rec_switch_gpio_lc=%d\n",__LINE__, __FUNCTION__,gpio_get_value(pdata->spk_rec_switch_gpio_lc));
+			}
+	}
+	else
+	{
+		pr_debug("%s, error\n", __func__);
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+#endif
 
 static void msm_anlg_cdc_codec_enable_adc_block(
 				struct snd_soc_component *component,
@@ -3390,6 +3582,11 @@ static int msm_anlg_cdc_codec_enable_ear_pa(struct snd_soc_dapm_widget *w,
 	struct sdm660_cdc_priv *sdm660_cdc =
 				snd_soc_component_get_drvdata(component);
 
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+	struct msm_asoc_mach_data *pdata = NULL;
+	pdata = snd_soc_card_get_drvdata(codec->component.card);
+#endif
+
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
 		dev_dbg(component->dev,
@@ -3420,6 +3617,10 @@ static int msm_anlg_cdc_codec_enable_ear_pa(struct snd_soc_dapm_widget *w,
 		usleep_range(7000, 7100);
 		msm_anlg_cdc_dig_notifier_call(component,
 					DIG_CDC_EVENT_RX1_MUTE_OFF);
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+		pr_debug("At %d In (%s), will run msm_rec_ext_pa_ctrl,true\n",__LINE__, __FUNCTION__);
+		schedule_delayed_work(&pdata->rec_gpio_work, msecs_to_jiffies(40));//50
+#endif
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
 		msm_anlg_cdc_dig_notifier_call(component,
@@ -3443,6 +3644,12 @@ static int msm_anlg_cdc_codec_enable_ear_pa(struct snd_soc_dapm_widget *w,
 		dev_dbg(component->dev,
 			"%s: Sleeping 7ms after disabling EAR PA\n",
 			__func__);
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+		cancel_delayed_work_sync(&pdata->rec_gpio_work);
+		msm_rec_ext_pa_ctrl(pdata, false);
+		pr_debug("At %d In (%s),close pa,spk_rec_switch_gpio_lc=%d\n",__LINE__, __FUNCTION__,gpio_get_value(pdata->spk_rec_switch_gpio_lc));
+		pdata->rec_is_on = 0;
+#endif
 		snd_soc_component_update_bits(component,
 				MSM89XX_PMIC_ANALOG_RX_EAR_CTL,
 				0x40, 0x00);
