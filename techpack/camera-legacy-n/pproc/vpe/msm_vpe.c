@@ -1678,12 +1678,8 @@ static struct platform_driver vpe_driver = {
 	},
 };
 
-extern bool camera_legacy_n_enable;
-
 static int __init msm_vpe_init_module(void)
 {
-	if (!camera_legacy_n_enable)
-		return -ENODEV;
 	return platform_driver_register(&vpe_driver);
 }
 

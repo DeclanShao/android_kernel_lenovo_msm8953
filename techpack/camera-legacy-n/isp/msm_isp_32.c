@@ -578,13 +578,8 @@ static struct platform_driver vfe_driver = {
 	.id_table = msm_vfe_dev_id,
 };
 
-extern bool camera_legacy_n_enable;
-
 static int __init msm_vfe_init_module(void)
 {
-	if (!camera_legacy_n_enable)
-		return -ENODEV;
-
 	return platform_driver_register(&vfe_driver);
 }
 

@@ -2200,12 +2200,8 @@ static struct platform_driver cci_driver = {
 	},
 };
 
-extern bool camera_legacy_n_enable;
-
 static int __init msm_cci_init_module(void)
 {
-	if (!camera_legacy_n_enable)
-		return -ENODEV;
 	return platform_driver_register(&cci_driver);
 }
 

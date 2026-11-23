@@ -1438,12 +1438,8 @@ static struct platform_driver msm_driver = {
 	},
 };
 
-extern bool camera_legacy_n_enable;
-
 static int __init msm_init(void)
 {
-	if (!camera_legacy_n_enable)
-		return -ENODEV;
 	return platform_driver_register(&msm_driver);
 }
 
