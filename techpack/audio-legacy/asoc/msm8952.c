@@ -8,6 +8,7 @@
 #include <linux/of_gpio.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
+#include <linux/jiffies.h>
 #include <linux/module.h>
 #include <linux/workqueue.h>
 #include <linux/input.h>
@@ -22,6 +23,9 @@
 #include "msm-pcm-routing-v2.h"
 #include <asoc/msm-cdc-pinctrl.h>
 #include "msm8952.h"
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+#include <asoc/msm8952-ext-pa.h>
+#endif
 #include "msm-pcm-voice-v2.h"
 
 #define DRV_NAME "msm8952-asoc-wcd"
@@ -61,14 +65,6 @@ static int msm8952_dig_mclk_event(struct snd_soc_dapm_widget *w,
 			      struct snd_kcontrol *kcontrol, int event);
 static int msm8952_wsa_switch_event(struct snd_soc_dapm_widget *w,
 			      struct snd_kcontrol *kcontrol, int event);
-
-#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
-int msm_spk_ext_pa_ctrl(struct msm_asoc_mach_data *pdatadata, bool value);
-
-extern int msm_hs_ext_pa_ctrl(struct msm_asoc_mach_data *pdatadata, bool value);
-
-extern int msm_rec_ext_pa_ctrl(struct msm_asoc_mach_data *pdatadata, bool value);
-#endif
 
 static int msm_dmic_event(struct snd_soc_dapm_widget *w,
 			  struct snd_kcontrol *kcontrol, int event);
@@ -444,7 +440,8 @@ int msm_spk_ext_pa_ctrl(struct msm_asoc_mach_data *pdatadata, bool value)
 
 	return ret;
 }
-#endif
+EXPORT_SYMBOL_GPL(msm_spk_ext_pa_ctrl);
+#endif /* CONFIG_MACH_LENOVO_TB8703: external speaker PA */
 
 static int enable_spk_ext_pa(struct snd_soc_component *component, int enable)
 {
@@ -457,7 +454,7 @@ static int enable_spk_ext_pa(struct snd_soc_component *component, int enable)
 	    return 0;
 	else {
 	    pr_err("%s: Invalid gpio: %d\n", __func__,pdata->spk_ext_pa_gpio);
-	    return false;
+	    return -EINVAL;
 	}
 #endif
 
@@ -3027,6 +3024,39 @@ void msm8952_disable_mclk(struct work_struct *work)
 }
 
 #if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+int msm_hs_ext_pa_ctrl(struct msm_asoc_mach_data *pdatadata, bool value)
+{
+	struct msm_asoc_mach_data *pdata = pdatadata; //snd_soc_card_get_drvdata(data);
+	bool on_off = value;
+	int ret = 0;
+
+	pr_debug("%s, hs_is_on=%d,spk_hs_switch_gpio=%d, on_off=%d\n", __func__, pdata->hs_is_on,pdata->spk_hs_switch_gpio, on_off);
+	if (gpio_is_valid(pdata->spk_hs_switch_gpio))
+	{
+		if (on_off)
+		{
+            gpio_direction_output(pdata->spk_hs_switch_gpio, 0);
+            gpio_set_value_cansleep(pdata->spk_hs_switch_gpio, false);
+            msleep(3);
+			pr_debug("At %d In (%s),after set,spk_hs_switch_gpio=%d\n",__LINE__, __FUNCTION__,gpio_get_value(pdata->spk_hs_switch_gpio));
+		}
+		else {
+            gpio_direction_output(pdata->spk_hs_switch_gpio, 1);
+            gpio_set_value_cansleep(pdata->spk_hs_switch_gpio, true);
+            msleep(3);
+			pr_debug("At %d In (%s),after close,spk_hs_switch_gpio=%d\n",__LINE__, __FUNCTION__,gpio_get_value(pdata->spk_hs_switch_gpio));
+		}
+	}
+	else
+	{
+		pr_debug("%s, error\n", __func__);
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(msm_hs_ext_pa_ctrl);
+
 static void msm_hs_ext_pa_delayed(struct work_struct *work)
 {
 	struct delayed_work *dwork;
@@ -3043,6 +3073,61 @@ static void msm_hs_ext_pa_delayed(struct work_struct *work)
 	pdata->hs_is_on = 2;
 	}
 }
+#endif /* CONFIG_MACH_LENOVO_TB8703: speaker/headphone switch */
+
+#if IS_ENABLED(CONFIG_MACH_LENOVO_TB8703)
+int msm_rec_ext_pa_ctrl(struct msm_asoc_mach_data *pdatadata, bool value)
+{
+	struct msm_asoc_mach_data *pdata = pdatadata; //snd_soc_card_get_drvdata(data);
+	bool on_off = value;
+	int ret = 0;
+
+	pr_debug("%s, rec_is_on=%d,spk_rec_switch_gpio_lc=%d, on_off=%d\n", __func__, pdata->rec_is_on,pdata->spk_rec_switch_gpio_lc, on_off);
+	if (gpio_is_valid(pdata->spk_rec_switch_gpio_lc))
+	{
+		if (on_off)
+		{
+			gpio_direction_output(pdata->spk_rec_switch_gpio_lc, 0);
+			gpio_set_value_cansleep(pdata->spk_rec_switch_gpio_lc, false);
+			//pr_debug("At %d In (%s),will delay\n",__LINE__, __FUNCTION__);
+			msleep(3);
+			pr_debug("At %d In (%s),after set,spk_rec_switch_gpio_lc=%d\n",__LINE__, __FUNCTION__,gpio_get_value(pdata->spk_rec_switch_gpio_lc));
+
+		}
+		else {
+			//pr_debug("At %d In (%s),close pa\n",__LINE__, __FUNCTION__);
+			gpio_direction_output(pdata->spk_rec_switch_gpio_lc, 1);
+			gpio_set_value_cansleep(pdata->spk_rec_switch_gpio_lc, true);
+			pr_debug("At %d In (%s),after close,spk_rec_switch_gpio_lc=%d\n",__LINE__, __FUNCTION__,gpio_get_value(pdata->spk_rec_switch_gpio_lc));
+			}
+	}
+	else
+	{
+		pr_debug("%s, error\n", __func__);
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(msm_rec_ext_pa_ctrl);
+
+/* arm the delayed work that raises the external receiver PA */
+void msm_rec_ext_pa_schedule(struct msm_asoc_mach_data *pdata)
+{
+	pr_debug("At %d In (%s), will run msm_rec_ext_pa_ctrl,true\n", __LINE__, __FUNCTION__);
+	schedule_delayed_work(&pdata->rec_gpio_work, msecs_to_jiffies(40));//50
+}
+EXPORT_SYMBOL_GPL(msm_rec_ext_pa_schedule);
+
+/* cancel the pending work and tear the external receiver PA down */
+void msm_rec_ext_pa_disable(struct msm_asoc_mach_data *pdata)
+{
+	cancel_delayed_work_sync(&pdata->rec_gpio_work);
+	msm_rec_ext_pa_ctrl(pdata, false);
+	pr_debug("At %d In (%s),close pa,spk_rec_switch_gpio_lc=%d\n", __LINE__, __FUNCTION__, gpio_get_value(pdata->spk_rec_switch_gpio_lc));
+	pdata->rec_is_on = 0;
+}
+EXPORT_SYMBOL_GPL(msm_rec_ext_pa_disable);
 
 static void msm_rec_ext_pa_delayed(struct work_struct *work)
 {
@@ -3060,7 +3145,7 @@ static void msm_rec_ext_pa_delayed(struct work_struct *work)
 	pdata->rec_is_on = 2;
 	}
 }
-#endif
+#endif /* CONFIG_MACH_LENOVO_TB8703: external receiver PA */
 
 static void msm8952_dt_parse_cap_info(struct platform_device *pdev,
 		struct msm_asoc_mach_data *pdata)
