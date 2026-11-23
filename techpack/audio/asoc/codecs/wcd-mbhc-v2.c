@@ -970,7 +970,7 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 			    WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_ELECT_ISRC_EN, 0);
 			mbhc->is_extn_cable = false;
 #ifdef CONFIG_MACH_LENOVO_TB8703
-			jack_type = SND_JACK_ANC_HEADPHONE;
+			jack_type = SND_JACK_HEADSET;
 #else
 			jack_type = SND_JACK_LINEOUT;
 #endif
